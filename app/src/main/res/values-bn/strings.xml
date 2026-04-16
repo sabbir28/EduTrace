@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">এডুট্রেস (EduTrace)</string>
+    <string name="widget_description">আপনার পড়াশোনার গতিবিধি একনজরে দেখুন।</string>
+    <string name="today_study">আজকের পড়াশোনা</string>
+    <string name="widget_loading">লোড হচ্ছে...</string>
+    <string name="settings">সেটিংস</string>
+    <string name="appearance">চেহারা (Appearance)</string>
+    <string name="dark_mode">ডার্ক মোড</string>
+    <string name="language">ভাষা (Language)</string>
+    <string name="reports">রিপোর্ট</string>
+    <string name="add_degree">ডিগ্রি যোগ করুন</string>
+    <string name="start_focus">ফোকাস শুরু করুন</string>
+</resources>

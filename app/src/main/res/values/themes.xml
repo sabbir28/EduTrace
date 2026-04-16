@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme. Using MaterialComponents for stability on older AGP. -->
+    <style name="Theme.EduTrace" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">#FACC15</item>
+        <item name="colorOnPrimary">#0F172A</item>
+        <item name="colorPrimaryVariant">#EAB308</item>
+        <item name="colorSecondary">#10B981</item>
+        
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">#0F172A</item>
+        <item name="android:windowBackground">#0F172A</item>
+    </style>
+</resources>

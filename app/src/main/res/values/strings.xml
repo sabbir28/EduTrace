@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">EduTrace</string>
+    <string name="widget_description">See your study pulse at a glance.</string>
+    <string name="today_study">Today\'s Study</string>
+    <string name="widget_loading">Loading...</string>
+    <string name="settings">Settings</string>
+    <string name="appearance">Appearance</string>
+    <string name="dark_mode">Dark Mode</string>
+    <string name="language">Language</string>
+    <string name="reports">Reports</string>
+</resources>

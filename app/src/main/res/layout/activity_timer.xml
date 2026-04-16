@@ -1,0 +1,282 @@
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_premium_dark">
+
+    <!-- Top Header Glass Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/headerCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="20dp"
+        app:cardBackgroundColor="@android:color/transparent"
+        app:cardCornerRadius="32dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp"
+        app:cardPreventCornerOverlap="false"
+        app:cardUseCompatPadding="false"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:id="@+id/header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
+            android:orientation="horizontal"
+            android:padding="20dp"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:id="@+id/btnBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="10dp"
+                android:src="@drawable/ic_back"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="#FFFFFF" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvSubjectName"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-black"
+                    android:text="Data Structures"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp" />
+
+                <TextView
+                    android:id="@+id/tvStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="FOCUSING"
+                    android:textColor="@color/elite_gold"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.1" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/ivToggleSound"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:padding="10dp"
+                android:src="@drawable/ic_sound"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="#94A3B8" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Main Content (Scrollable) -->
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:fillViewport="true"
+        app:layout_constraintTop_toBottomOf="@id/headerCard"
+        app:layout_constraintBottom_toTopOf="@id/bottomBarCard">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:gravity="center_horizontal">
+
+            <!-- Premium Square Timer Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/timerWrapper"
+                android:layout_width="280dp"
+                android:layout_height="280dp"
+                android:layout_marginTop="20dp"
+                app:cardBackgroundColor="@android:color/transparent"
+                app:cardCornerRadius="32dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp"
+                app:cardPreventCornerOverlap="false"
+                app:cardUseCompatPadding="false">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_glass_card">
+
+                    <View
+                        android:id="@+id/auraView"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:alpha="0"
+                        android:background="@drawable/bg_timer_glow" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:gravity="center"
+                        android:padding="20dp">
+
+                        <TextView
+                            android:id="@+id/tvTimer"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-thin"
+                            android:text="00:00:00"
+                            android:textColor="#FFFFFF"
+                            android:textSize="62sp"
+                            android:letterSpacing="-0.02" />
+
+                    </LinearLayout>
+
+                    <!-- Sleek Linear Progress at Bottom -->
+                    <ProgressBar
+                        android:id="@+id/timerProgress"
+                        style="?android:attr/progressBarStyleHorizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="6dp"
+                        android:layout_gravity="bottom"
+                        android:layout_marginHorizontal="20dp"
+                        android:layout_marginBottom="24dp"
+                        android:indeterminate="false"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="@color/elite_gold"
+                        android:progressBackgroundTint="#1AFFFFFF" />
+                </FrameLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Soundscape Selection Glass Pill -->
+            <LinearLayout
+                android:id="@+id/soundscapePill"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:visibility="gone"
+                android:background="@drawable/bg_glass_card"
+                android:paddingHorizontal="20dp"
+                android:paddingVertical="12dp"
+                android:orientation="horizontal"
+                android:elevation="4dp">
+
+                <ImageView android:id="@+id/btnRain" android:layout_width="32dp" android:layout_height="32dp" android:padding="6dp" android:src="@drawable/ic_rain" app:tint="#CBD5E1" />
+                <ImageView android:id="@+id/btnLofi" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="16dp" android:padding="6dp" android:src="@drawable/ic_lofi" app:tint="#CBD5E1" />
+                <ImageView android:id="@+id/btnNoise" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="16dp" android:padding="6dp" android:src="@drawable/ic_noise" app:tint="#CBD5E1" />
+            </LinearLayout>
+
+            <!-- Intelligence Section Card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/intelligenceCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp"
+                app:cardBackgroundColor="@android:color/transparent"
+                app:cardCornerRadius="32dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp"
+                app:cardPreventCornerOverlap="false"
+                app:cardUseCompatPadding="false">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_glass_card"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-black"
+                        android:text="REAL-TIME INTELLIGENCE"
+                        android:textColor="#94A3B8"
+                        android:textSize="11sp"
+                        android:letterSpacing="0.2" />
+
+                    <org.sabbir.edutrace.ui.views.ComparisonBarView
+                        android:id="@+id/comparisonBars"
+                        android:layout_width="match_parent"
+                        android:layout_height="180dp"
+                        android:layout_marginTop="16dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Motivational Insight -->
+            <TextView
+                android:id="@+id/tvQuoteText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="32dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Focus on being productive instead of busy."
+                android:textColor="#94A3B8"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:lineSpacingExtra="6dp"
+                android:alpha="0.8" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <!-- Bottom Action Bar Glass Card -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/bottomBarCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="@android:color/transparent"
+        app:cardCornerRadius="32dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp"
+        app:cardPreventCornerOverlap="false"
+        app:cardUseCompatPadding="false"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:id="@+id/bottomBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_glass_card"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBreak"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="BREAK"
+                android:textColor="#CBD5E1"
+                android:fontFamily="sans-serif-bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDistracted"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:text="STRAY"
+                android:textColor="#F43F5E"
+                android:fontFamily="sans-serif-bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEnd"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1.4"
+                android:text="FINISH"
+                android:textColor="#0F172A"
+                android:fontFamily="sans-serif-black"
+                android:background="@drawable/bg_btn_finish"
+                app:backgroundTint="@null"
+                app:cornerRadius="20dp" />
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

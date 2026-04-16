@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+/* Copyright 2006, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
+-->
+<resources>
+    <!-- **************************************************************** -->
+    <!-- These are the attributes used in AndroidManifest.xml. -->
+    <!-- **************************************************************** -->
+    <eat-comment />
+
+    <!-- The overall theme to use for an activity.  Use with either the
+         application tag (to supply a default theme for all activities) or
+         the activity tag (to supply a specific theme for that activity).
+
+         <p>This automatically sets
+         your activity's Context to use this theme, and may also be used
+         for "starting" animations prior to the activity being launched (to
+         better match what the activity actually looks like).  It is a reference
+         to a style resource defining the theme.  If not set, the default
+         system theme will be used. -->
+    <attr name="theme" format="reference" />
+
+    <!-- A user-legible name for the given item.  Use with the
+         application tag (to supply a default label for all application
+         components), or with the activity, receiver, service, or instrumentation
+         tag (to supply a specific label for that component).  It may also be
+         used with the intent-filter tag to supply a label to show to the
+         user when an activity is being selected based on a particular Intent.
+
+         <p>The given label will be used wherever the user sees information
+         about its associated component; for example, as the name of a
+         main activity that is displayed in the launcher.  You should
+         generally set this to a reference to a string resource, so that
+         it can be localized, however it is also allowed to supply a plain
+         string for quick and dirty programming. -->
+    <attr name="label" format="reference|string" />
+
+    <!-- A Drawable resource providing a graphical representation of its
+         associated item.  Use with the
+         application tag (to supply a default icon for all application
+         components), or with the activity, receiver, service, or instrumentation
+         tag (to supply a specific icon for that component).  It may also be
+         used with the intent-filter tag to supply an icon to show to the
+         user when an activity is being selected based on a particular Intent.
+
+         <p>The given icon will be used to display to the user a graphical
+         representation of its associated component; for example, as the icon
+         for main activity that is displayed in the launcher.  This must be
+         a reference to a Drawable resource containing the image definition. -->
+    <attr name="icon" format="reference" />
+
+    <!-- A Drawable resource providing a graphical representation of its
+         associated item.  Use with the
+         application tag (to supply a default round icon for all application
+         components), or with the activity, receiver, service, or instrumentation
+         tag (to supply a specific round icon for that component).  It may also be
+         used with the intent-filter tag to supply a round icon to show to the
+         user when an activity is being selected based on a particular Int

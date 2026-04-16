@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Elite indigo Developer Palette -->
+    <color name="obsidian_bg">#0A0A0C</color>
+    <color name="slate_dark">#12121A</color>
+    <color name="slate_light">#94A3B8</color>
+    <color name="elite_gold">#FFB800</color>
+    <color name="amber_glow">#FFD700</color>
+    <color name="status_focus">#6366F1</color>
+    <color name="status_break">#10B981</color>
+    <color name="distraction_alert">#F43F5E</color>
+    <color name="icon_background_dark">#0A0A0C</color>
+</resources>

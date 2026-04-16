@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Refined light-catching gradient for glassy items -->
+    <gradient
+        android:startColor="#26FFFFFF"
+        android:centerColor="#0DFFFFFF"
+        android:endColor="#1AFFFFFF"
+        android:angle="135" />
+    <corners android:radius="24dp" />
+    <stroke
+        android:width="0.8dp"
+        android:color="#33FFFFFF" />
+</shape>
