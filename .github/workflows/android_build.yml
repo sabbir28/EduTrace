@@ -50,38 +50,71 @@ jobs:
     - name: Build Android APKs
       run: ./gradlew assembleDebug assembleRelease -PversionCode=${{ steps.version.outputs.version_code }} -PversionName=${{ steps.version.outputs.version_name }}
 
-    - name: Verify APK Signatures
+    - name: Verify Signatures and Package Verified APKs
       run: |
         BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
-        for apk in app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/debug/app-debug.apk; do
-          if [ -f "$apk" ]; then
-            echo "Verifying $apk..."
-            if [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
-              "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$apk" || true
-            fi
+        if [ ! -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+          echo "::error::apksigner not found in $BUILD_TOOLS_DIR"
+          exit 1
+        fi
+
+        mkdir -p verified_apks
+        TAG="${{ steps.version.outputs.tag_name }}"
+
+        echo "### Verified APK Signatures" >> $GITHUB_STEP_SUMMARY
+        echo "| Package | Status | Signer DN | SHA-256 Digest |" >> $GITHUB_STEP_SUMMARY
+        echo "| :--- | :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+
+        verify_and_stage() {
+          local apk_path="$1"
+          local apk_type="$2"
+
+          if [ ! -f "$apk_path" ]; then
+            echo "::warning::File $apk_path not found"
+            return 0
           fi
-        done
 
-    - name: Prepare APK Packages
-      run: |
-        cp app/build/outputs/apk/release/app-release.apk "EduTrace-${{ steps.version.outputs.tag_name }}-release.apk"
-        cp app/build/outputs/apk/release/app-release.apk "EduTrace-release.apk"
-        cp app/build/outputs/apk/debug/app-debug.apk "EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk"
-        cp app/build/outputs/apk/debug/app-debug.apk "EduTrace-debug.apk"
+          echo "=============================================="
+          echo "Verifying $apk_type APK: $apk_path"
+          echo "=============================================="
 
-    - name: Upload APK Artifact
+          if "$BUILD_TOOLS_DIR/apksigner" verify --print-certs "$apk_path"; then
+            echo "SUCCESS: $apk_type APK verified successfully!"
+            
+            CERT_INFO=$("$BUILD_TOOLS_DIR/apksigner" verify --print-certs "$apk_path")
+            SIGNER_DN=$(echo "$CERT_INFO" | grep "certificate DN:" | head -n 1 | sed 's/.*certificate DN: //')
+            SHA256=$(echo "$CERT_INFO" | grep "certificate SHA-256 digest:" | head -n 1 | sed 's/.*certificate SHA-256 digest: //')
+
+            echo "| **EduTrace-${apk_type}.apk** | Passed | \`${SIGNER_DN}\` | \`${SHA256:0:16}...\` |" >> $GITHUB_STEP_SUMMARY
+
+            cp "$apk_path" "verified_apks/EduTrace-${TAG}-${apk_type}.apk"
+            cp "$apk_path" "verified_apks/EduTrace-${apk_type}.apk"
+          else
+            echo "::error::$apk_type APK verification FAILED! This APK will NOT be published."
+            echo "| **EduTrace-${apk_type}.apk** | FAILED | N/A | N/A |" >> $GITHUB_STEP_SUMMARY
+          fi
+        }
+
+        verify_and_stage "app/build/outputs/apk/release/app-release.apk" "release"
+        verify_and_stage "app/build/outputs/apk/debug/app-debug.apk" "debug"
+
+        VERIFIED_COUNT=$(find verified_apks -type f -name "*.apk" | wc -l)
+        if [ "$VERIFIED_COUNT" -eq 0 ]; then
+          echo "::error::No APK passed verification! Stopping workflow."
+          exit 1
+        fi
+
+        echo "Staged $VERIFIED_COUNT verified APK packages for release."
+        ls -lh verified_apks/
+
+    - name: Upload Verified APK Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: EduTrace-${{ steps.version.outputs.tag_name }}
-        path: |
-          EduTrace-${{ steps.version.outputs.tag_name }}-release.apk
-          EduTrace-release.apk
-          EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk
-          EduTrace-debug.apk
-          app/build/outputs/apk/release/app-release.apk
-          app/build/outputs/apk/debug/app-debug.apk
+        path: verified_apks/*.apk
+        if-no-files-found: error
 
-    - name: Create GitHub Release
+    - name: Publish Verified APKs to GitHub Release
       if: github.event_name != 'pull_request'
       uses: softprops/action-gh-release@v2
       with:
@@ -91,8 +124,5 @@ jobs:
         draft: false
         prerelease: false
         generate_release_notes: true
-        files: |
-          EduTrace-${{ steps.version.outputs.tag_name }}-release.apk
-          EduTrace-release.apk
-          EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk
-          EduTrace-debug.apk
+        overwrite_files: true
+        files: verified_apks/*.apk
