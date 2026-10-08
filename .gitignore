@@ -30,6 +30,7 @@ captures/
 # Keystores
 *.jks
 *.keystore
+!keystore/release.keystore
 
 # Mac OS files
 .DS_Store
