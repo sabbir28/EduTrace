@@ -34,7 +34,7 @@
                 android:layout_height="72dp"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="12dp"
-                android:src="@drawable/ic_stats"
+                android:src="@drawable/ic_cloud"
                 app:tint="#FACC15" />
 
             <TextView
