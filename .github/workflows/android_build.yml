@@ -88,7 +88,10 @@ jobs:
         APK_PATH="app/build/outputs/apk/release/app-release.apk"
         if [ -f "$APK_PATH" ]; then
           echo "Found signed release APK, verifying signature..."
-          $ANDROID_HOME/build-tools/33.0.1/apksigner verify --verbose --print-certs "$APK_PATH" || true
+          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+          if [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+            "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$APK_PATH" || true
+          fi
         else
           echo "Warning: $APK_PATH not found"
         fi
