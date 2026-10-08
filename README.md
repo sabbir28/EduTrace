@@ -121,6 +121,7 @@ app/src/main/java/org/sabbir/edutrace/
 │   ├── SoundscapeManager.java     # Ambient study audio controller
 │   ├── SessionManager.java        # SharedPreferences active timer persistence
 │   ├── ReportEngine.java          # Analytics calculations and metric formatting
+│   ├── EmailManager.java          # SSL SMTP client & Auth OTP verification engine
 │   └── NotificationHelper.java    # Android 8+ Notification Channels manager
 └── widget/
     └── StudyPulseWidget.java      # Android AppWidget for home screen stats

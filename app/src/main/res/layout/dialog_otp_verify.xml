@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#1E293B"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:id="@+id/tvOtpDialogTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
+        android:text="Verify Email OTP ✉️"
+        android:textColor="@android:color/white"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/tvOtpDialogMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="18dp"
+        android:text="A 6-digit verification code has been dispatched to your email address."
+        android:textColor="#94A3B8"
+        android:textSize="13sp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilOtpCode"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:hint="6-Digit Verification Code"
+        android:textColorHint="#94A3B8"
+        app:boxStrokeColor="#FACC15"
+        app:hintTextColor="#FACC15">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etOtpCode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:inputType="number"
+            android:letterSpacing="0.3"
+            android:maxLength="6"
+            android:textColor="@android:color/white"
+            android:textSize="20sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilNewPassword"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        android:hint="New Password (min 6 chars)"
+        android:textColorHint="#94A3B8"
+        android:visibility="gone"
+        app:boxStrokeColor="#FACC15"
+        app:endIconMode="password_toggle"
+        app:endIconTint="#94A3B8"
+        app:hintTextColor="#FACC15">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etNewPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textPassword"
+            android:textColor="@android:color/white" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <ProgressBar
+        android:id="@+id/progressOtp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="12dp"
+        android:indeterminateTint="#FACC15"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOtpCancel"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="Cancel"
+            android:textColor="#94A3B8" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOtpVerify"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#FACC15"
+            android:text="Verify &amp; Continue"
+            android:textColor="#0F172A"
+            app:cornerRadius="10dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

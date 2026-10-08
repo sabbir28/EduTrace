@@ -315,6 +315,114 @@ public class CloudDbManager {
         });
     }
 
+    public interface AvailabilityCallback {
+        void onAvailable();
+        void onError(String message);
+    }
+
+    public interface EmailLookupCallback {
+        void onFound(String username, String email);
+        void onError(String message);
+    }
+
+    public static void checkUserAvailability(String username, String email, AvailabilityCallback callback) {
+        cloudExecutor.execute(() -> {
+            try (Connection conn = getDirectConnection()) {
+                String cleanUsername = username.trim().toLowerCase(Locale.ROOT);
+                String cleanEmail = (email != null) ? email.trim().toLowerCase(Locale.ROOT) : "";
+
+                try (PreparedStatement checkStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(username) = ?")) {
+                    checkStmt.setString(1, cleanUsername);
+                    try (ResultSet rs = checkStmt.executeQuery()) {
+                        if (rs.next()) {
+                            if (callback != null) mainHandler.post(() -> callback.onError("Username is already registered."));
+                            return;
+                        }
+                    }
+                }
+
+                if (!cleanEmail.isEmpty()) {
+                    try (PreparedStatement checkEmailStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(email) = ?")) {
+                        checkEmailStmt.setString(1, cleanEmail);
+                        try (ResultSet rs = checkEmailStmt.executeQuery()) {
+                            if (rs.next()) {
+                                if (callback != null) mainHandler.post(() -> callback.onError("Email is already in use."));
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                if (callback != null) mainHandler.post(callback::onAvailable);
+            } catch (Exception e) {
+                e.printStackTrace();
+                if (callback != null) mainHandler.post(() -> callback.onError("Connection error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void findUserEmail(String usernameOrEmail, EmailLookupCallback callback) {
+        cloudExecutor.execute(() -> {
+            try (Connection conn = getDirectConnection()) {
+                String clean = usernameOrEmail.trim().toLowerCase(Locale.ROOT);
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "SELECT username, email FROM edutrace_users WHERE LOWER(username) = ? OR LOWER(email) = ?")) {
+                    stmt.setString(1, clean);
+                    stmt.setString(2, clean);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            String user = rs.getString("username");
+                            String email = rs.getString("email");
+                            if (email == null || email.trim().isEmpty()) {
+                                if (callback != null) mainHandler.post(() -> callback.onError("No email address associated with this account."));
+                            } else {
+                                if (callback != null) mainHandler.post(() -> callback.onFound(user, email));
+                            }
+                        } else {
+                            if (callback != null) mainHandler.post(() -> callback.onError("User account not found."));
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                if (callback != null) mainHandler.post(() -> callback.onError("Database error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void resetPassword(String usernameOrEmail, String newPassword, AuthCallback callback) {
+        cloudExecutor.execute(() -> {
+            try (Connection conn = getDirectConnection()) {
+                String clean = usernameOrEmail.trim().toLowerCase(Locale.ROOT);
+                String salt = generateSalt();
+                String hash = hashPassword(newPassword, salt);
+
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "UPDATE edutrace_users SET password_hash = ?, salt = ? WHERE LOWER(username) = ? OR LOWER(email) = ? RETURNING id, username, email, display_name")) {
+                    stmt.setString(1, hash);
+                    stmt.setString(2, salt);
+                    stmt.setString(3, clean);
+                    stmt.setString(4, clean);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            int id = rs.getInt("id");
+                            String username = rs.getString("username");
+                            String email = rs.getString("email");
+                            String displayName = rs.getString("display_name");
+                            CloudUser user = new CloudUser(id, username, email, displayName);
+                            postAuthSuccess(callback, user);
+                        } else {
+                            postAuthError(callback, "Account not found.");
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                postAuthError(callback, "Database error: " + e.getMessage());
+            }
+        });
+    }
+
     public static void backupData(Context context, SyncCallback callback) {
         if (!isLoggedIn(context)) {
             if (callback != null) postSyncError(callback, "Please sign in to backup data to the cloud.");

@@ -144,7 +144,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="12dp"
-                        android:hint="Email (Optional)"
+                        android:hint="Email (for OTP verification)"
                         android:textColorHint="#94A3B8"
                         android:visibility="gone"
                         app:boxStrokeColor="#FACC15"
@@ -163,7 +163,7 @@
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginBottom="20dp"
+                        android:layout_marginBottom="8dp"
                         android:hint="Password"
                         android:textColorHint="#94A3B8"
                         app:boxStrokeColor="#FACC15"
@@ -178,6 +178,17 @@
                             android:inputType="textPassword"
                             android:textColor="@android:color/white" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/tvForgotPassword"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="end"
+                        android:layout_marginBottom="16dp"
+                        android:padding="4dp"
+                        android:text="Forgot Password?"
+                        android:textColor="#FACC15"
+                        android:textSize="12sp" />
 
                     <ProgressBar
                         android:id="@+id/progressAuth"
