@@ -14,29 +14,14 @@ android {
 
     }
 
-    signingConfigs {
-        release {
-            def keystoreFile = rootProject.file("keystore/release.keystore")
-            if (keystoreFile.exists()) {
-                storeFile keystoreFile
-                storePassword (project.findProperty("KEYSTORE_PASSWORD") ?: "edutrace123").toString()
-                keyAlias (project.findProperty("KEY_ALIAS") ?: "edutrace").toString()
-                keyPassword (project.findProperty("KEY_PASSWORD") ?: "edutrace123").toString()
-                v1SigningEnabled true
-                v2SigningEnabled true
-                v3SigningEnabled true
-                v4SigningEnabled true
-            } else {
-                initWith(signingConfigs.debug)
-            }
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.debug
         }
     }
 

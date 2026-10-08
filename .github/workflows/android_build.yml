@@ -32,39 +32,6 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Ensure Release Keystore
-      run: |
-        mkdir -p keystore
-        if [ -f keystore/release.keystore ]; then
-          echo "Testing existing keystore compatibility..."
-          if ! keytool -list -keystore keystore/release.keystore -storepass edutrace123 -alias edutrace > /dev/null 2>&1; then
-            echo "Keystore invalid or incompatible, generating with runner keytool..."
-            rm -f keystore/release.keystore
-            keytool -genkeypair -v \
-              -keystore keystore/release.keystore \
-              -alias edutrace \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass edutrace123 \
-              -keypass edutrace123 \
-              -dname "CN=EduTrace, OU=EduTrace, O=EduTrace, L=City, S=State, C=US"
-          else
-            echo "Keystore verified successfully."
-          fi
-        else
-          echo "Generating release keystore..."
-          keytool -genkeypair -v \
-            -keystore keystore/release.keystore \
-            -alias edutrace \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass edutrace123 \
-            -keypass edutrace123 \
-            -dname "CN=EduTrace, OU=EduTrace, O=EduTrace, L=City, S=State, C=US"
-        fi
-
     - name: Determine Release Version
       id: version
       run: |
@@ -80,35 +47,39 @@ jobs:
         echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
         echo "Release Version: ${FULL_VERSION} (Tag: ${TAG_NAME})"
 
-    - name: Build Signed Release APK
-      run: ./gradlew assembleRelease -PversionCode=${{ steps.version.outputs.version_code }} -PversionName=${{ steps.version.outputs.version_name }}
+    - name: Build Android APKs
+      run: ./gradlew assembleDebug assembleRelease -PversionCode=${{ steps.version.outputs.version_code }} -PversionName=${{ steps.version.outputs.version_name }}
 
-    - name: Verify APK Signature
+    - name: Verify APK Signatures
       run: |
-        APK_PATH="app/build/outputs/apk/release/app-release.apk"
-        if [ -f "$APK_PATH" ]; then
-          echo "Found signed release APK, verifying signature..."
-          BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
-          if [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
-            "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$APK_PATH" || true
+        BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+        for apk in app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/debug/app-debug.apk; do
+          if [ -f "$apk" ]; then
+            echo "Verifying $apk..."
+            if [ -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+              "$BUILD_TOOLS_DIR/apksigner" verify --verbose --print-certs "$apk" || true
+            fi
           fi
-        else
-          echo "Warning: $APK_PATH not found"
-        fi
+        done
 
-    - name: Prepare Release APK Packages
+    - name: Prepare APK Packages
       run: |
-        cp app/build/outputs/apk/release/app-release.apk "EduTrace-${{ steps.version.outputs.tag_name }}.apk"
+        cp app/build/outputs/apk/release/app-release.apk "EduTrace-${{ steps.version.outputs.tag_name }}-release.apk"
         cp app/build/outputs/apk/release/app-release.apk "EduTrace-release.apk"
+        cp app/build/outputs/apk/debug/app-debug.apk "EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk"
+        cp app/build/outputs/apk/debug/app-debug.apk "EduTrace-debug.apk"
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: EduTrace-${{ steps.version.outputs.tag_name }}
         path: |
-          EduTrace-${{ steps.version.outputs.tag_name }}.apk
+          EduTrace-${{ steps.version.outputs.tag_name }}-release.apk
           EduTrace-release.apk
+          EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk
+          EduTrace-debug.apk
           app/build/outputs/apk/release/app-release.apk
+          app/build/outputs/apk/debug/app-debug.apk
 
     - name: Create GitHub Release
       if: github.event_name != 'pull_request'
@@ -121,6 +92,7 @@ jobs:
         prerelease: false
         generate_release_notes: true
         files: |
-          EduTrace-${{ steps.version.outputs.tag_name }}.apk
+          EduTrace-${{ steps.version.outputs.tag_name }}-release.apk
           EduTrace-release.apk
-          app/build/outputs/apk/release/app-release.apk
+          EduTrace-${{ steps.version.outputs.tag_name }}-debug.apk
+          EduTrace-debug.apk
