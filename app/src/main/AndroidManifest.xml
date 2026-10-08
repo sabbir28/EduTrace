@@ -32,10 +32,10 @@
             android:name=".ui.activities.MainActivity"
             android:exported="false" />
 
-        <activity android:name=".ui.activities.TimerActivity" />
-        <activity android:name=".ui.activities.ReportsActivity" />
-        <activity android:name=".ui.activities.SubjectActivity" />
-        <activity android:name=".ui.activities.SettingsActivity" />
+        <activity android:name=".ui.activities.TimerActivity" android:exported="false" />
+        <activity android:name=".ui.activities.ReportsActivity" android:exported="false" />
+        <activity android:name=".ui.activities.SubjectActivity" android:exported="false" />
+        <activity android:name=".ui.activities.SettingsActivity" android:exported="false" />
 
         <receiver
             android:name=".widget.StudyPulseWidget"

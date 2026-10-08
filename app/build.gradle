@@ -24,6 +24,8 @@ android {
                 keyPassword (project.findProperty("KEY_PASSWORD") ?: "edutrace123").toString()
                 v1SigningEnabled true
                 v2SigningEnabled true
+                v3SigningEnabled true
+                v4SigningEnabled true
             } else {
                 initWith(signingConfigs.debug)
             }
