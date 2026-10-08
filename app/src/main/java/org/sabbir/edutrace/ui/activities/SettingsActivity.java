@@ -33,6 +33,23 @@ public class SettingsActivity extends AppCompatActivity {
         setupTheme();
         setupLanguage();
         setupLibraryMode();
+        setupAppUpdates();
+    }
+
+    private void setupAppUpdates() {
+        boolean autoUpdate = prefs.getBoolean("auto_check_updates", true);
+        binding.switchAutoUpdate.setChecked(autoUpdate);
+
+        binding.switchAutoUpdate.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean("auto_check_updates", isChecked).apply();
+        });
+
+        binding.btnCheckUpdate.setOnClickListener(v -> {
+            org.sabbir.edutrace.utils.UpdateManager.checkForUpdates(this, true);
+        });
+
+        String currentVer = org.sabbir.edutrace.utils.UpdateManager.getCurrentVersion(this);
+        binding.tvVersionInfo.setText("EduTrace v" + currentVer + " (2026)");
     }
 
     private void setupLibraryMode() {

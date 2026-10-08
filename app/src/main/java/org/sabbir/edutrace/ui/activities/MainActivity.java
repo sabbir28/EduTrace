@@ -82,6 +82,18 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         startAppUsageService();
         scheduleStudyReminder();
         requestNotificationPermission();
+        checkForAppUpdates();
+    }
+
+    private void checkForAppUpdates() {
+        try {
+            boolean autoCheck = getSharedPreferences("Settings", MODE_PRIVATE).getBoolean("auto_check_updates", true);
+            if (autoCheck) {
+                org.sabbir.edutrace.utils.UpdateManager.checkForUpdates(this, false);
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 
     private void requestNotificationPermission() {
