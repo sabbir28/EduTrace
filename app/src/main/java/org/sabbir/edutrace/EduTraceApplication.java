@@ -8,6 +8,16 @@ public class EduTraceApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences("Settings", MODE_PRIVATE);
+            boolean isDarkMode = prefs.getBoolean("dark_mode", true);
+            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(
+                isDarkMode ? androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                           : androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+            );
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
 
         try {
             // Initialize notification channels early so services and notifications have valid channels

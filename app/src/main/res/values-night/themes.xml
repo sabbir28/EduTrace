@@ -1,16 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-  <!-- Base application theme. -->
-  <style name="Theme.EduTrace" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
-      <!-- Primary brand color. -->
-      <item name="colorPrimary">@color/purple_200</item>
-      <item name="colorPrimaryVariant">@color/purple_700</item>
-      <item name="colorOnPrimary">@color/black</item>
-      <!-- Secondary brand color. -->
-      <item name="colorSecondary">@color/teal_200</item>
-      <item name="colorSecondaryVariant">@color/teal_200</item>
-      <item name="colorOnSecondary">@color/black</item>
-      <!-- Status bar color. -->
-      <item name="android:statusBarColor" tools:targetApi="l">?attr/colorPrimaryVariant</item>
-      <!-- Customize your theme here. -->
-  </style>
+    <!-- Base application theme. -->
+    <style name="Theme.EduTrace" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">#FACC15</item>
+        <item name="colorOnPrimary">#0F172A</item>
+        <item name="colorPrimaryVariant">#EAB308</item>
+        <item name="colorSecondary">#10B981</item>
+
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor" tools:targetApi="l">#0F172A</item>
+        <item name="android:windowBackground">#0F172A</item>
+    </style>
 </resources>
