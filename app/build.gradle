@@ -9,8 +9,8 @@ android {
         applicationId "org.sabbir.edutrace"
         minSdk 21
         targetSdk 33
-        versionCode 1
-        versionName "1.0"
+        versionCode Integer.parseInt(String.valueOf(project.findProperty('versionCode') ?: 1))
+        versionName String.valueOf(project.findProperty('versionName') ?: "1.0")
 
     }
 
