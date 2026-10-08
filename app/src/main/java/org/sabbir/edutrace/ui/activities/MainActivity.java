@@ -93,28 +93,40 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     }
 
     private void scheduleStudyReminder() {
-        androidx.work.PeriodicWorkRequest reminderRequest =
-                new androidx.work.PeriodicWorkRequest.Builder(org.sabbir.edutrace.services.StudyReminderWorker.class,
-                        24, java.util.concurrent.TimeUnit.HOURS)
-                        .setInitialDelay(12, java.util.concurrent.TimeUnit.HOURS) // Start roughly in the evening
-                        .build();
+        try {
+            androidx.work.PeriodicWorkRequest reminderRequest =
+                    new androidx.work.PeriodicWorkRequest.Builder(org.sabbir.edutrace.services.StudyReminderWorker.class,
+                            24, java.util.concurrent.TimeUnit.HOURS)
+                            .setInitialDelay(12, java.util.concurrent.TimeUnit.HOURS) // Start roughly in the evening
+                            .build();
 
-        androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "StudyReminder",
-                androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-                reminderRequest
-        );
+            androidx.work.WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                    "StudyReminder",
+                    androidx.work.ExistingPeriodicWorkPolicy.KEEP,
+                    reminderRequest
+            );
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 
     private void startAppUsageService() {
-        Intent serviceIntent = new Intent(this, org.sabbir.edutrace.services.AppBlockService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
+        try {
+            Intent serviceIntent = new Intent(this, org.sabbir.edutrace.services.AppBlockService.class);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
         
-        checkUsagePermissions();
+        try {
+            checkUsagePermissions();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 
     private void checkUsagePermissions() {

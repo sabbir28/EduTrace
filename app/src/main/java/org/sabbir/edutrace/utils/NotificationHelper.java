@@ -27,7 +27,7 @@ public class NotificationHelper {
 
     public static void showFocusNotification(Context context, String title, String text) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, FOCUS_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
