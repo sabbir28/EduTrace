@@ -362,6 +362,19 @@ public class TimerActivity extends AppCompatActivity {
         StudySession session = new StudySession(subjectId, startTime, endTime, totalBreakTime, distractionCount, "");
         new StudyRepository(getApplication()).insertSession(session);
         
+        // Auto-backup to cloud if user is logged in
+        try {
+            if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(this)) {
+                boolean autoCloudBackup = getSharedPreferences("Settings", MODE_PRIVATE)
+                        .getBoolean("cloud_auto_backup_enabled", true);
+                if (autoCloudBackup) {
+                    org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(getApplicationContext(), null);
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+
         sessionManager.clearSession();
 
         // Stop Foreground Service when session is explicitly ended

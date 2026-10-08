@@ -33,7 +33,119 @@ public class SettingsActivity extends AppCompatActivity {
         setupTheme();
         setupLanguage();
         setupLibraryMode();
+        setupCloudSync();
         setupAppUpdates();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        updateCloudUI();
+    }
+
+    private void setupCloudSync() {
+        binding.btnCloudAuthAction.setOnClickListener(v -> {
+            if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(this)) {
+                new androidx.appcompat.app.AlertDialog.Builder(this)
+                        .setTitle("Sign Out")
+                        .setMessage("Are you sure you want to sign out from EduTrace Cloud?")
+                        .setPositiveButton("Sign Out", (dialog, which) -> {
+                            org.sabbir.edutrace.data.cloud.CloudDbManager.logout(this);
+                            updateCloudUI();
+                            android.widget.Toast.makeText(this, "Signed out from cloud.", android.widget.Toast.LENGTH_SHORT).show();
+                        })
+                        .setNegativeButton("Cancel", null)
+                        .show();
+            } else {
+                startActivity(new Intent(this, AuthActivity.class));
+            }
+        });
+
+        binding.btnBackupNow.setOnClickListener(v -> {
+            binding.progressCloudSync.setVisibility(android.view.View.VISIBLE);
+            binding.btnBackupNow.setEnabled(false);
+            binding.btnRestoreCloud.setEnabled(false);
+
+            org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(this, new org.sabbir.edutrace.data.cloud.CloudDbManager.SyncCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    binding.progressCloudSync.setVisibility(android.view.View.GONE);
+                    binding.btnBackupNow.setEnabled(true);
+                    binding.btnRestoreCloud.setEnabled(true);
+                    binding.tvLastBackupTime.setText("Last Cloud Backup: " + org.sabbir.edutrace.data.cloud.CloudDbManager.getLastBackupTime(SettingsActivity.this));
+                    android.widget.Toast.makeText(SettingsActivity.this, message, android.widget.Toast.LENGTH_LONG).show();
+                }
+
+                @Override
+                public void onError(String message) {
+                    binding.progressCloudSync.setVisibility(android.view.View.GONE);
+                    binding.btnBackupNow.setEnabled(true);
+                    binding.btnRestoreCloud.setEnabled(true);
+                    android.widget.Toast.makeText(SettingsActivity.this, message, android.widget.Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+
+        binding.btnRestoreCloud.setOnClickListener(v -> {
+            new androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Restore Cloud Data 📥")
+                    .setMessage("This will download and merge your cloud-backed study sessions, subjects, and degrees into this device. Continue?")
+                    .setPositiveButton("Restore", (dialog, which) -> {
+                        binding.progressCloudSync.setVisibility(android.view.View.VISIBLE);
+                        binding.btnBackupNow.setEnabled(false);
+                        binding.btnRestoreCloud.setEnabled(false);
+
+                        org.sabbir.edutrace.data.cloud.CloudDbManager.restoreData(this, new org.sabbir.edutrace.data.cloud.CloudDbManager.SyncCallback() {
+                            @Override
+                            public void onSuccess(String message) {
+                                binding.progressCloudSync.setVisibility(android.view.View.GONE);
+                                binding.btnBackupNow.setEnabled(true);
+                                binding.btnRestoreCloud.setEnabled(true);
+                                android.widget.Toast.makeText(SettingsActivity.this, message, android.widget.Toast.LENGTH_LONG).show();
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                binding.progressCloudSync.setVisibility(android.view.View.GONE);
+                                binding.btnBackupNow.setEnabled(true);
+                                binding.btnRestoreCloud.setEnabled(true);
+                                android.widget.Toast.makeText(SettingsActivity.this, message, android.widget.Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+        });
+
+        boolean autoBackup = prefs.getBoolean("cloud_auto_backup_enabled", true);
+        binding.switchAutoCloudBackup.setChecked(autoBackup);
+        binding.switchAutoCloudBackup.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefs.edit().putBoolean("cloud_auto_backup_enabled", isChecked).apply();
+        });
+
+        updateCloudUI();
+    }
+
+    private void updateCloudUI() {
+        if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(this)) {
+            org.sabbir.edutrace.data.cloud.CloudUser user = org.sabbir.edutrace.data.cloud.CloudDbManager.getCurrentUser(this);
+            binding.tvCloudUser.setText(user != null ? user.getDisplayName() : "Connected");
+            String sub = (user != null && user.getEmail() != null && !user.getEmail().isEmpty())
+                    ? user.getEmail() : (user != null ? "@" + user.getUsername() : "Online backup enabled");
+            binding.tvCloudStatus.setText(sub);
+            binding.btnCloudAuthAction.setText("Sign Out");
+            binding.btnCloudAuthAction.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#334155")));
+            binding.btnCloudAuthAction.setTextColor(android.graphics.Color.WHITE);
+            binding.layoutCloudSyncActions.setVisibility(android.view.View.VISIBLE);
+            binding.tvLastBackupTime.setText("Last Cloud Backup: " + org.sabbir.edutrace.data.cloud.CloudDbManager.getLastBackupTime(this));
+        } else {
+            binding.tvCloudUser.setText("Not Signed In");
+            binding.tvCloudStatus.setText("Backup study time and history online");
+            binding.btnCloudAuthAction.setText("Sign In or Register");
+            binding.btnCloudAuthAction.setBackgroundTintList(android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FACC15")));
+            binding.btnCloudAuthAction.setTextColor(android.graphics.Color.parseColor("#0F172A"));
+            binding.layoutCloudSyncActions.setVisibility(android.view.View.GONE);
+        }
     }
 
     private void setupAppUpdates() {

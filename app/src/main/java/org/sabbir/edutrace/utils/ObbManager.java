@@ -234,15 +234,89 @@ public class ObbManager {
     }
 
     private static void showObbUpdateDialog(Context context, String newVersion, String downloadUrl) {
+        if (context instanceof android.app.Activity && ((android.app.Activity) context).isFinishing()) {
+            return;
+        }
         new AlertDialog.Builder(context)
                 .setTitle("Asset Pack Update 📦")
                 .setMessage("A new study content and soundscape pack (v" + newVersion + ") is available!\n\n"
-                        + "You can download this pack instantly to get the latest study quotes, soundscapes, and syllabus templates without reinstalling or updating the app.")
+                        + "Download this pack to get the latest study quotes, soundscapes, and syllabus templates without reinstalling or updating the app.")
                 .setPositiveButton("Download Pack", (dialog, which) -> {
-                    downloadAndApplyObb(context, downloadUrl, newVersion, null);
+                    downloadAndApplyObbWithProgress(context, downloadUrl, newVersion, null);
                 })
                 .setNegativeButton("Later", null)
                 .show();
+    }
+
+    /**
+     * Downloads an OBB pack displaying a progress dialog with percentage and progress bar.
+     */
+    public static void downloadAndApplyObbWithProgress(Context context, String downloadUrl, String newVersion, ObbDownloadListener listener) {
+        if (context == null) return;
+
+        AlertDialog progressDialog = null;
+        android.widget.ProgressBar progressBar = null;
+        android.widget.TextView tvPercent = null;
+        android.widget.TextView tvStatus = null;
+
+        if (context instanceof android.app.Activity && !((android.app.Activity) context).isFinishing()) {
+            android.view.View dialogView = android.view.LayoutInflater.from(context).inflate(org.sabbir.edutrace.R.layout.dialog_obb_download, null);
+            android.widget.TextView tvTitle = dialogView.findViewById(org.sabbir.edutrace.R.id.tvObbDialogTitle);
+            android.widget.TextView tvMessage = dialogView.findViewById(org.sabbir.edutrace.R.id.tvObbDialogMessage);
+            progressBar = dialogView.findViewById(org.sabbir.edutrace.R.id.progressBarObb);
+            tvPercent = dialogView.findViewById(org.sabbir.edutrace.R.id.tvObbPercentText);
+            tvStatus = dialogView.findViewById(org.sabbir.edutrace.R.id.tvObbStatusText);
+
+            if (tvTitle != null) tvTitle.setText("Asset Pack v" + newVersion);
+            if (tvMessage != null) tvMessage.setText("Downloading new study quotes and soundscapes...");
+
+            progressDialog = new AlertDialog.Builder(context)
+                    .setView(dialogView)
+                    .setCancelable(false)
+                    .create();
+            try {
+                progressDialog.show();
+            } catch (Exception e) {
+                progressDialog = null;
+            }
+        }
+
+        final AlertDialog finalDialog = progressDialog;
+        final android.widget.ProgressBar finalBar = progressBar;
+        final android.widget.TextView finalPercent = tvPercent;
+        final android.widget.TextView finalStatus = tvStatus;
+
+        downloadAndApplyObb(context, downloadUrl, newVersion, new ObbDownloadListener() {
+            @Override
+            public void onProgress(int progressPercent) {
+                if (finalBar != null) finalBar.setProgress(progressPercent);
+                if (finalPercent != null) finalPercent.setText(progressPercent + "%");
+                if (finalStatus != null) {
+                    finalStatus.setText(progressPercent < 100 ? "Downloading assets..." : "Verifying expansion pack...");
+                }
+                if (listener != null) listener.onProgress(progressPercent);
+            }
+
+            @Override
+            public void onSuccess(String version) {
+                if (finalDialog != null && finalDialog.isShowing()) {
+                    try {
+                        finalDialog.dismiss();
+                    } catch (Exception ignored) {}
+                }
+                if (listener != null) listener.onSuccess(version);
+            }
+
+            @Override
+            public void onError(String errorMessage) {
+                if (finalDialog != null && finalDialog.isShowing()) {
+                    try {
+                        finalDialog.dismiss();
+                    } catch (Exception ignored) {}
+                }
+                if (listener != null) listener.onError(errorMessage);
+            }
+        });
     }
 
     /**

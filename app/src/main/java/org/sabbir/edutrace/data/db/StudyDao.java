@@ -61,4 +61,23 @@ public interface StudyDao {
 
     @Query("SELECT SUM(endTimestamp - startTimestamp - breakDurationMillis) FROM study_sessions WHERE startTimestamp >= :fromTimestamp")
     long getTotalTimeFromSync(long fromTimestamp);
+
+    // Synchronous queries for cloud backup/sync operations
+    @Query("SELECT * FROM degrees")
+    List<Degree> getDegreesListSync();
+
+    @Query("SELECT * FROM subjects")
+    List<Subject> getSubjectsListSync();
+
+    @Query("SELECT * FROM study_sessions")
+    List<StudySession> getSessionsListSync();
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    void insertOrReplaceDegree(Degree degree);
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    void insertOrReplaceSubject(Subject subject);
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    void insertOrReplaceSession(StudySession session);
 }

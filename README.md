@@ -103,6 +103,7 @@ EduTrace follows standard Android Jetpack architecture principles:
 ```
 app/src/main/java/org/sabbir/edutrace/
 ├── data/
+│   ├── cloud/           # CloudDbManager (PostgreSQL sync & auth), CloudUser
 │   ├── db/              # Room Database, DAOs, and SQLite configuration
 │   ├── models/          # Entities: Degree, Subject, StudySession
 │   └── repository/      # Repository pattern mediating database operations
@@ -111,10 +112,10 @@ app/src/main/java/org/sabbir/edutrace/
 │   ├── StudyTimerService.java     # Foreground service keeping active session alive
 │   └── StudyReminderWorker.java   # Periodic WorkManager study reminders
 ├── ui/
-│   ├── activities/      # SplashActivity, MainActivity, TimerActivity, ReportsActivity, SettingsActivity
+│   ├── activities/      # SplashActivity, MainActivity, TimerActivity, ReportsActivity, SettingsActivity, AuthActivity
 │   └── adapters/        # RecyclerView Adapters for Degrees, Subjects, and Sessions
 ├── utils/
-│   ├── ObbManager.java            # OTA Asset expansion pack download and loading
+│   ├── ObbManager.java            # OTA Asset expansion pack download and loading (with progress bar)
 │   ├── UpdateManager.java         # GitHub Releases version checker & downloader
 │   ├── QuoteManager.java          # Bilingual quote engine with OBB fallback
 │   ├── SoundscapeManager.java     # Ambient study audio controller

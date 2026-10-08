@@ -90,6 +90,7 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
             boolean autoCheck = getSharedPreferences("Settings", MODE_PRIVATE).getBoolean("auto_check_updates", true);
             if (autoCheck) {
                 org.sabbir.edutrace.utils.UpdateManager.checkForUpdates(this, false);
+                org.sabbir.edutrace.utils.ObbManager.checkForObbUpdates(this, false, null);
             }
         } catch (Throwable t) {
             t.printStackTrace();
