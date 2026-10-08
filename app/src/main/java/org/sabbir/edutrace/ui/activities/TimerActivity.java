@@ -144,19 +144,28 @@ public class TimerActivity extends AppCompatActivity {
         subjectName = getIntent().getStringExtra("SUBJECT_NAME");
         binding.tvSubjectName.setText(subjectName);
 
-        // Apply custom font to the quote text
+        // Apply custom font to the quote text with safe fallback
         try {
             android.content.SharedPreferences prefs = getSharedPreferences("Settings", MODE_PRIVATE);
             String lang = prefs.getString("language", "en");
-            android.graphics.Typeface tf;
+            android.graphics.Typeface tf = null;
             if ("bn".equals(lang)) {
-                tf = android.graphics.Typeface.createFromAsset(getAssets(), "font/ChhatrishJuly/Unicode/Li Chhatrish July Unicode.ttf");
+                try {
+                    tf = android.graphics.Typeface.createFromAsset(getAssets(), "font/ChhatrishJuly/Unicode/Li Chhatrish July Unicode.ttf");
+                } catch (Exception ignored) {}
             } else {
-                tf = android.graphics.Typeface.createFromAsset(getAssets(), "font/Chillax_Complete/Fonts/TTF/Chillax-Variable.ttf");
+                try {
+                    tf = android.graphics.Typeface.createFromAsset(getAssets(), "font/Chillax_Complete/Fonts/TTF/Chillax-Variable.ttf");
+                } catch (Exception ignored) {}
             }
-            binding.tvQuoteText.setTypeface(tf);
+            if (tf != null) {
+                binding.tvQuoteText.setTypeface(tf);
+            } else {
+                binding.tvQuoteText.setTypeface(android.graphics.Typeface.DEFAULT);
+            }
         } catch (Exception e) {
             e.printStackTrace();
+            binding.tvQuoteText.setTypeface(android.graphics.Typeface.DEFAULT);
         }
 
         sessionManager = new org.sabbir.edutrace.utils.SessionManager(this);

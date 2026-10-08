@@ -64,8 +64,9 @@ public class ObbManager {
      * Checks if an OBB expansion pack is downloaded and valid.
      */
     public static boolean hasObb(Context context) {
+        if (context == null) return false;
         File file = getObbFile(context);
-        if (!file.exists() || file.length() == 0) return false;
+        if (file == null || !file.exists() || file.length() == 0) return false;
         try {
             ZipFile zip = new ZipFile(file);
             zip.close();
@@ -79,7 +80,7 @@ public class ObbManager {
      * Returns the currently active OBB pack version string.
      */
     public static String getInstalledObbVersion(Context context) {
-        if (!hasObb(context)) return "None (Bundled Assets)";
+        if (context == null || !hasObb(context)) return "None (Bundled Assets)";
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         return prefs.getString(KEY_OBB_VERSION, "v1.0");
     }
@@ -89,8 +90,9 @@ public class ObbManager {
      * Returns null if the OBB is not present or does not contain the file.
      */
     public static String loadStringFromObb(Context context, String relativePath) {
+        if (context == null || relativePath == null || relativePath.trim().isEmpty()) return null;
         File obbFile = getObbFile(context);
-        if (!hasObb(context)) return null;
+        if (obbFile == null || !hasObb(context)) return null;
 
         try (ZipFile zipFile = new ZipFile(obbFile)) {
             ZipEntry entry = zipFile.getEntry(relativePath);
@@ -119,12 +121,16 @@ public class ObbManager {
      * so it can be played by MediaPlayer or referenced via file path.
      */
     public static File getFileFromObb(Context context, String relativePath) {
+        if (context == null || relativePath == null || relativePath.trim().isEmpty()) return null;
         File obbFile = getObbFile(context);
-        if (!hasObb(context)) return null;
+        if (obbFile == null || !hasObb(context)) return null;
 
         try (ZipFile zipFile = new ZipFile(obbFile)) {
             ZipEntry entry = zipFile.getEntry(relativePath);
-            if (entry == null) return null;
+            if (entry == null && relativePath.startsWith("/")) {
+                entry = zipFile.getEntry(relativePath.substring(1));
+            }
+            if (entry == null || entry.getSize() <= 0) return null;
 
             File cacheFile = new File(context.getCacheDir(), "obb_cache/" + relativePath);
             File parent = cacheFile.getParentFile();
@@ -282,7 +288,8 @@ public class ObbManager {
                 }
                 boolean renamed = tempFile.renameTo(targetFile);
                 if (!renamed) {
-                    throw new Exception("Failed to rename temporary OBB file to target destination");
+                    copyFile(tempFile, targetFile);
+                    tempFile.delete();
                 }
 
                 // Save new version
@@ -306,5 +313,16 @@ public class ObbManager {
                 });
             }
         });
+    }
+
+    private static void copyFile(File src, File dst) throws Exception {
+        try (InputStream in = new java.io.FileInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+        }
     }
 }
