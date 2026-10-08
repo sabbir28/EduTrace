@@ -267,9 +267,33 @@
                         android:id="@+id/btnCheckUpdate"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Check for Updates Now"
+                        android:text="Check for App APK Updates"
                         android:textColor="#0F172A"
                         app:backgroundTint="#FACC15"
+                        app:cornerRadius="12dp" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#334155"
+                        android:layout_marginVertical="12dp" />
+
+                    <TextView
+                        android:id="@+id/tvObbStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Asset Pack (OBB): Default"
+                        android:textColor="#94A3B8"
+                        android:textSize="13sp"
+                        android:layout_marginBottom="8dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCheckObbUpdate"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Check for OBB Asset Pack Updates"
+                        android:textColor="@android:color/white"
+                        app:backgroundTint="#334155"
                         app:cornerRadius="12dp" />
 
                 </LinearLayout>

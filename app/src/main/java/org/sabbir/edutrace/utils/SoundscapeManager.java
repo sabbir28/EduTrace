@@ -36,6 +36,22 @@ public class SoundscapeManager {
         }
     }
 
+    public void playSoundscape(String soundscapeName) {
+        stop();
+        try {
+            java.io.File audioFile = ObbManager.getFileFromObb(context, "soundscapes/" + soundscapeName + ".mp3");
+            if (audioFile != null && audioFile.exists()) {
+                mediaPlayer = new MediaPlayer();
+                mediaPlayer.setDataSource(audioFile.getAbsolutePath());
+                mediaPlayer.setLooping(true);
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public void stop() {
         if (mediaPlayer != null) {
             mediaPlayer.stop();

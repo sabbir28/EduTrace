@@ -104,17 +104,25 @@ jobs:
           exit 1
         fi
 
-        echo "Staged $VERIFIED_COUNT verified APK packages for release."
+        # Build OBB expansion pack containing dynamic content (quotes, templates)
+        echo "Building OBB asset expansion pack..."
+        mkdir -p obb_staging
+        cp app/src/main/assets/quotes_*.json obb_staging/
+        echo "{\"version\": \"${{ steps.version.outputs.version_name }}\", \"name\": \"EduTrace Content Pack\"}" > obb_staging/pack_manifest.json
+        (cd obb_staging && zip -r ../verified_apks/EduTrace-assets.obb .)
+        cp verified_apks/EduTrace-assets.obb "verified_apks/main.${{ steps.version.outputs.version_code }}.org.sabbir.edutrace.obb"
+
+        echo "Staged verified APK packages and OBB expansion packs for release:"
         ls -lh verified_apks/
 
-    - name: Upload Verified APK Artifacts
+    - name: Upload Verified APK and OBB Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: EduTrace-${{ steps.version.outputs.tag_name }}
-        path: verified_apks/*.apk
+        path: verified_apks/*
         if-no-files-found: error
 
-    - name: Publish Verified APKs to GitHub Release
+    - name: Publish Verified APKs and OBB to GitHub Release
       if: github.event_name != 'pull_request'
       uses: softprops/action-gh-release@v2
       with:
@@ -125,4 +133,4 @@ jobs:
         prerelease: false
         generate_release_notes: true
         overwrite_files: true
-        files: verified_apks/*.apk
+        files: verified_apks/*

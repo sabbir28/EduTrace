@@ -50,6 +50,13 @@ public class SettingsActivity extends AppCompatActivity {
 
         String currentVer = org.sabbir.edutrace.utils.UpdateManager.getCurrentVersion(this);
         binding.tvVersionInfo.setText("EduTrace v" + currentVer + " (2026)");
+
+        binding.tvObbStatus.setText("Asset Pack (OBB): " + org.sabbir.edutrace.utils.ObbManager.getInstalledObbVersion(this));
+        binding.btnCheckObbUpdate.setOnClickListener(v -> {
+            org.sabbir.edutrace.utils.ObbManager.checkForObbUpdates(this, true, (isAvailable, latestVersion, downloadUrl) -> {
+                binding.tvObbStatus.setText("Asset Pack (OBB): " + org.sabbir.edutrace.utils.ObbManager.getInstalledObbVersion(this));
+            });
+        });
     }
 
     private void setupLibraryMode() {

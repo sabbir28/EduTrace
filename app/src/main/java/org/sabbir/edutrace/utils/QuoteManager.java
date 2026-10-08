@@ -27,6 +27,18 @@ public class QuoteManager {
         String lang = prefs.getString("language", "en");
         String fileName = lang.equals("bn") ? "quotes_bn.json" : "quotes_en.json";
 
+        // 1. Check for updated quotes in OBB expansion pack
+        String obbJson = ObbManager.loadStringFromObb(context, fileName);
+        if (obbJson != null && !obbJson.trim().isEmpty()) {
+            try {
+                parseQuotesJson(obbJson);
+                return;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        // 2. Fall back to bundled application assets
         try {
             InputStream is = context.getAssets().open(fileName);
             int size = is.available();
@@ -34,22 +46,30 @@ public class QuoteManager {
             is.read(buffer);
             is.close();
             String json = new String(buffer, StandardCharsets.UTF_8);
-            JSONObject obj = new JSONObject(json);
-
-            JSONArray focusArr = obj.getJSONArray("focus");
-            for (int i = 0; i < focusArr.length(); i++) {
-                focusQuotes.add(focusArr.getString(i));
-            }
-
-            JSONArray flowArr = obj.getJSONArray("flow");
-            for (int i = 0; i < flowArr.length(); i++) {
-                flowQuotes.add(flowArr.getString(i));
-            }
+            parseQuotesJson(json);
         } catch (Exception e) {
             e.printStackTrace();
             // Fallback to minimal hardcoded quotes if JSON fails
             focusQuotes.add("Keep going, you're doing great!");
             flowQuotes.add("Flow state achieved.");
+        }
+    }
+
+    private void parseQuotesJson(String json) throws Exception {
+        JSONObject obj = new JSONObject(json);
+
+        JSONArray focusArr = obj.optJSONArray("focus");
+        if (focusArr != null) {
+            for (int i = 0; i < focusArr.length(); i++) {
+                focusQuotes.add(focusArr.getString(i));
+            }
+        }
+
+        JSONArray flowArr = obj.optJSONArray("flow");
+        if (flowArr != null) {
+            for (int i = 0; i < flowArr.length(); i++) {
+                flowQuotes.add(flowArr.getString(i));
+            }
         }
     }
 
