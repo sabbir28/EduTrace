@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.services;
 
+import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
@@ -26,6 +27,16 @@ public class StudyTimerService extends Service {
     private String subjectName;
     private long lastScreenOffTime = 0;
     private static final long INACTIVITY_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
+
+    private Runnable wardenRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isWardenRunning) {
+                enforceSilence();
+                wardenHandler.postDelayed(this, 5000);
+            }
+        }
+    };
 
     private BroadcastReceiver screenReceiver = new BroadcastReceiver() {
         @Override

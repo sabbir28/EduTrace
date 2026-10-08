@@ -7,6 +7,7 @@ import org.sabbir.edutrace.data.models.Subject;
 import org.sabbir.edutrace.data.models.StudySession;
 
 import android.app.Application;
+import android.content.Context;
 import androidx.lifecycle.LiveData;
 import java.util.List;
 
@@ -15,11 +16,15 @@ public class StudyRepository {
     private LiveData<List<Degree>> mAllDegrees;
     private LiveData<List<StudySession>> mAllSessions;
 
-    public StudyRepository(Application application) {
-        StudyDatabase db = StudyDatabase.getDatabase(application);
+    public StudyRepository(Context context) {
+        StudyDatabase db = StudyDatabase.getDatabase(context);
         mStudyDao = db.studyDao();
         mAllDegrees = mStudyDao.getAllDegrees();
         mAllSessions = mStudyDao.getAllSessions();
+    }
+
+    public StudyRepository(Application application) {
+        this((Context) application);
     }
 
     public LiveData<List<Degree>> getAllDegrees() {

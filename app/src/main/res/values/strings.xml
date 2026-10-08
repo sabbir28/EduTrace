@@ -8,4 +8,6 @@
     <string name="dark_mode">Dark Mode</string>
     <string name="language">Language</string>
     <string name="reports">Reports</string>
+    <string name="add_degree">Add Degree</string>
+    <string name="start_focus">Start Focus</string>
 </resources>
