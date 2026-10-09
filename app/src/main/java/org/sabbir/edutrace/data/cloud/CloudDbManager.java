@@ -586,6 +586,10 @@ public class CloudDbManager {
         });
     }
 
+    public static void backupData(Context context) {
+        backupData(context, (SyncProgressCallback) null);
+    }
+
     public static void restoreData(Context context, SyncProgressCallback callback) {
         if (!isLoggedIn(context)) {
             if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from the cloud."));
@@ -684,6 +688,10 @@ public class CloudDbManager {
                 if (callback != null) callback.onError(message);
             }
         });
+    }
+
+    public static void restoreData(Context context) {
+        restoreData(context, (SyncProgressCallback) null);
     }
 
     private static void postAuthSuccess(AuthCallback callback, CloudUser user) {

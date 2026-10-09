@@ -368,7 +368,7 @@ public class TimerActivity extends AppCompatActivity {
                 boolean autoCloudBackup = getSharedPreferences("Settings", MODE_PRIVATE)
                         .getBoolean("cloud_auto_backup_enabled", true);
                 if (autoCloudBackup) {
-                    org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(getApplicationContext(), null);
+                    org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(getApplicationContext());
                 }
             }
         } catch (Throwable t) {
