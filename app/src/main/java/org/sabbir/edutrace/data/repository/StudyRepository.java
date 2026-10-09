@@ -12,11 +12,13 @@ import androidx.lifecycle.LiveData;
 import java.util.List;
 
 public class StudyRepository {
+    private Context mContext;
     private StudyDao mStudyDao;
     private LiveData<List<Degree>> mAllDegrees;
     private LiveData<List<StudySession>> mAllSessions;
 
     public StudyRepository(Context context) {
+        mContext = context != null ? context.getApplicationContext() : null;
         StudyDatabase db = StudyDatabase.getDatabase(context);
         mStudyDao = db.studyDao();
         mAllDegrees = mStudyDao.getAllDegrees();
@@ -38,42 +40,49 @@ public class StudyRepository {
     public void insertDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertDegree(degree);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void insertSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertSubject(subject);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void insertSession(StudySession session) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertSession(session);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void updateDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.updateDegree(degree);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void deleteDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.deleteDegree(degree);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void updateSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.updateSubject(subject);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 
     public void deleteSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.deleteSubject(subject);
+            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
         });
     }
 

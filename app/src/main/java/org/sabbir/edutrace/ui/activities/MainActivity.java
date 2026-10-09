@@ -83,6 +83,10 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         scheduleStudyReminder();
         requestNotificationPermission();
         checkForAppUpdates();
+
+        // Automatically safeguard user data in isolated safe vault without prompting
+        org.sabbir.edutrace.utils.LocalVaultManager.autoRecoverIfEmpty(this);
+        org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(this);
     }
 
     private void checkForAppUpdates() {

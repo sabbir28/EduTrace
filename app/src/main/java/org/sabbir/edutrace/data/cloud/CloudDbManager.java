@@ -63,6 +63,12 @@ public class CloudDbManager {
         void onError(String message);
     }
 
+    public interface SyncProgressCallback {
+        void onProgress(String status);
+        void onSuccess(String message);
+        void onError(String message);
+    }
+
     private static String decode(byte[] data) {
         byte key = 0x5A;
         byte[] out = new byte[data.length];
@@ -72,8 +78,20 @@ public class CloudDbManager {
         return new String(out, StandardCharsets.UTF_8);
     }
 
-    private static Connection getDirectConnection() throws SQLException, ClassNotFoundException {
-        Class.forName("org.postgresql.Driver");
+    private static void ensureDriverRegistered() {
+        try {
+            java.sql.DriverManager.registerDriver(new org.postgresql.Driver());
+        } catch (Throwable ignored) {
+            try {
+                Class.forName("org.postgresql.Driver");
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
+    }
+
+    private static Connection getDirectConnection() throws SQLException {
+        ensureDriverRegistered();
         String host = decode(ENC_HOST);
         String port = decode(ENC_PORT);
         String db = decode(ENC_DB);
@@ -81,11 +99,41 @@ public class CloudDbManager {
         String pass = decode(ENC_PASS);
         String ssl = decode(ENC_SSL);
 
-        String url = "jdbc:postgresql://" + host + ":" + port + "/" + db + "?sslmode=" + ssl + "&connectTimeout=10&socketTimeout=15";
-        DriverManager.setLoginTimeout(10);
-        Connection conn = DriverManager.getConnection(url, user, pass);
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("user", user);
+        props.setProperty("password", pass);
+        props.setProperty("ssl", "true");
+        props.setProperty("sslmode", ssl);
+        props.setProperty("loginTimeout", "8");
+        props.setProperty("connectTimeout", "8");
+        props.setProperty("socketTimeout", "15");
 
-        if (!tablesInitialized) {
+        String primaryUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db;
+        Connection conn = null;
+
+        try {
+            DriverManager.setLoginTimeout(8);
+            conn = DriverManager.getConnection(primaryUrl, props);
+        } catch (SQLException primaryEx) {
+            // Try with NonValidatingFactory in case mobile network CA or truststore fails
+            java.util.Properties fallbackProps = new java.util.Properties();
+            fallbackProps.putAll(props);
+            fallbackProps.setProperty("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
+
+            try {
+                conn = DriverManager.getConnection(primaryUrl, fallbackProps);
+            } catch (SQLException sslEx) {
+                // Secondary fallback on Supabase transaction pooler port (6543)
+                String fallbackUrl = "jdbc:postgresql://" + host + ":6543/" + db;
+                try {
+                    conn = DriverManager.getConnection(fallbackUrl, fallbackProps);
+                } catch (SQLException secondaryEx) {
+                    throw primaryEx; // Throw initial exception if all fallbacks failed
+                }
+            }
+        }
+
+        if (conn != null && !tablesInitialized) {
             initTablesIfNotExist(conn);
             tablesInitialized = true;
         }
@@ -423,9 +471,9 @@ public class CloudDbManager {
         });
     }
 
-    public static void backupData(Context context, SyncCallback callback) {
+    public static void backupData(Context context, SyncProgressCallback callback) {
         if (!isLoggedIn(context)) {
-            if (callback != null) postSyncError(callback, "Please sign in to backup data to the cloud.");
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to backup data to the cloud."));
             return;
         }
 
@@ -433,6 +481,7 @@ public class CloudDbManager {
 
         cloudExecutor.execute(() -> {
             try {
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to PostgreSQL cloud database..."));
                 StudyDatabase localDb = StudyDatabase.getDatabase(context);
                 StudyDao dao = localDb.studyDao();
 
@@ -443,6 +492,7 @@ public class CloudDbManager {
                 try (Connection conn = getDirectConnection()) {
                     conn.setAutoCommit(false);
 
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading " + degrees.size() + " degrees & " + subjects.size() + " subjects..."));
                     // 1. Sync Degrees
                     String degreeSql = "INSERT INTO edutrace_user_degrees (user_id, local_id, name, color_hex, synced_at) " +
                             "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) " +
@@ -476,6 +526,7 @@ public class CloudDbManager {
                         stmt.executeBatch();
                     }
 
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading " + sessions.size() + " study sessions..."));
                     // 3. Sync Sessions
                     String sessionSql = "INSERT INTO edutrace_user_sessions (user_id, local_id, subject_local_id, start_timestamp, end_timestamp, break_duration_millis, distraction_count, notes, synced_at) " +
                             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
@@ -505,87 +556,132 @@ public class CloudDbManager {
                             .putLong(KEY_LAST_BACKUP, now)
                             .apply();
 
-                    String msg = "Successfully backed up " + sessions.size() + " study sessions & " + subjects.size() + " subjects to cloud!";
-                    if (callback != null) postSyncSuccess(callback, msg);
+                    // Also auto-update local safe vault
+                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                    String msg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to cloud! ☁️";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                if (callback != null) postSyncError(callback, "Backup failed: " + e.getMessage());
+                if (callback != null) mainHandler.post(() -> callback.onError("Backup failed: " + e.getMessage()));
             }
         });
     }
 
-    public static void restoreData(Context context, SyncCallback callback) {
+    public static void backupData(Context context, SyncCallback callback) {
+        backupData(context, new SyncProgressCallback() {
+            @Override
+            public void onProgress(String status) {}
+
+            @Override
+            public void onSuccess(String message) {
+                if (callback != null) callback.onSuccess(message);
+            }
+
+            @Override
+            public void onError(String message) {
+                if (callback != null) callback.onError(message);
+            }
+        });
+    }
+
+    public static void restoreData(Context context, SyncProgressCallback callback) {
         if (!isLoggedIn(context)) {
-            if (callback != null) postSyncError(callback, "Please sign in to restore data from the cloud.");
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from the cloud."));
             return;
         }
 
         final int userId = getCurrentUser(context).getId();
 
         cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                StudyDatabase localDb = StudyDatabase.getDatabase(context);
-                StudyDao dao = localDb.studyDao();
+            try {
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to PostgreSQL cloud database..."));
+                try (Connection conn = getDirectConnection()) {
+                    StudyDatabase localDb = StudyDatabase.getDatabase(context);
+                    StudyDao dao = localDb.studyDao();
 
-                int restoredDegrees = 0;
-                int restoredSubjects = 0;
-                int restoredSessions = 0;
+                    int restoredDegrees = 0;
+                    int restoredSubjects = 0;
+                    int restoredSessions = 0;
 
-                // 1. Restore Degrees
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "SELECT local_id, name, color_hex FROM edutrace_user_degrees WHERE user_id = ? ORDER BY local_id ASC")) {
-                    stmt.setInt(1, userId);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        while (rs.next()) {
-                            Degree d = new Degree(rs.getString("name"), rs.getString("color_hex"));
-                            d.id = rs.getInt("local_id");
-                            dao.insertOrReplaceDegree(d);
-                            restoredDegrees++;
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring academic degrees & subjects..."));
+                    // 1. Restore Degrees
+                    try (PreparedStatement stmt = conn.prepareStatement(
+                            "SELECT local_id, name, color_hex FROM edutrace_user_degrees WHERE user_id = ? ORDER BY local_id ASC")) {
+                        stmt.setInt(1, userId);
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            while (rs.next()) {
+                                Degree d = new Degree(rs.getString("name"), rs.getString("color_hex"));
+                                d.id = rs.getInt("local_id");
+                                dao.insertOrReplaceDegree(d);
+                                restoredDegrees++;
+                            }
                         }
                     }
-                }
 
-                // 2. Restore Subjects
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "SELECT local_id, degree_local_id, name, color_hex FROM edutrace_user_subjects WHERE user_id = ? ORDER BY local_id ASC")) {
-                    stmt.setInt(1, userId);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        while (rs.next()) {
-                            Subject s = new Subject(rs.getInt("degree_local_id"), rs.getString("name"), rs.getString("color_hex"));
-                            s.id = rs.getInt("local_id");
-                            dao.insertOrReplaceSubject(s);
-                            restoredSubjects++;
+                    // 2. Restore Subjects
+                    try (PreparedStatement stmt = conn.prepareStatement(
+                            "SELECT local_id, degree_local_id, name, color_hex FROM edutrace_user_subjects WHERE user_id = ? ORDER BY local_id ASC")) {
+                        stmt.setInt(1, userId);
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            while (rs.next()) {
+                                Subject s = new Subject(rs.getInt("degree_local_id"), rs.getString("name"), rs.getString("color_hex"));
+                                s.id = rs.getInt("local_id");
+                                dao.insertOrReplaceSubject(s);
+                                restoredSubjects++;
+                            }
                         }
                     }
-                }
 
-                // 3. Restore Sessions
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "SELECT local_id, subject_local_id, start_timestamp, end_timestamp, break_duration_millis, distraction_count, notes FROM edutrace_user_sessions WHERE user_id = ? ORDER BY local_id ASC")) {
-                    stmt.setInt(1, userId);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        while (rs.next()) {
-                            StudySession s = new StudySession(
-                                    rs.getInt("subject_local_id"),
-                                    rs.getLong("start_timestamp"),
-                                    rs.getLong("end_timestamp"),
-                                    rs.getLong("break_duration_millis"),
-                                    rs.getInt("distraction_count"),
-                                    rs.getString("notes")
-                            );
-                            s.id = rs.getInt("local_id");
-                            dao.insertOrReplaceSession(s);
-                            restoredSessions++;
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
+                    // 3. Restore Sessions
+                    try (PreparedStatement stmt = conn.prepareStatement(
+                            "SELECT local_id, subject_local_id, start_timestamp, end_timestamp, break_duration_millis, distraction_count, notes FROM edutrace_user_sessions WHERE user_id = ? ORDER BY local_id ASC")) {
+                        stmt.setInt(1, userId);
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            while (rs.next()) {
+                                StudySession s = new StudySession(
+                                        rs.getInt("subject_local_id"),
+                                        rs.getLong("start_timestamp"),
+                                        rs.getLong("end_timestamp"),
+                                        rs.getLong("break_duration_millis"),
+                                        rs.getInt("distraction_count"),
+                                        rs.getString("notes")
+                                );
+                                s.id = rs.getInt("local_id");
+                                dao.insertOrReplaceSession(s);
+                                restoredSessions++;
+                            }
                         }
                     }
-                }
 
-                String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees!";
-                if (callback != null) postSyncSuccess(callback, msg);
+                    // Also auto-update local safe vault
+                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees from cloud! 📥";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                }
             } catch (Exception e) {
                 e.printStackTrace();
-                if (callback != null) postSyncError(callback, "Restore failed: " + e.getMessage());
+                if (callback != null) mainHandler.post(() -> callback.onError("Restore failed: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void restoreData(Context context, SyncCallback callback) {
+        restoreData(context, new SyncProgressCallback() {
+            @Override
+            public void onProgress(String status) {}
+
+            @Override
+            public void onSuccess(String message) {
+                if (callback != null) callback.onSuccess(message);
+            }
+
+            @Override
+            public void onError(String message) {
+                if (callback != null) callback.onError(message);
             }
         });
     }
