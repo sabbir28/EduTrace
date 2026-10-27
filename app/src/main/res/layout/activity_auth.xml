@@ -53,7 +53,7 @@
                 android:layout_marginTop="6dp"
                 android:layout_marginBottom="24dp"
                 android:gravity="center"
-                android:text="Sync your study timer, degrees, and sessions securely to PostgreSQL"
+                android:text="Sync your study timer, degrees, and sessions securely with EduTrace Cloud"
                 android:textColor="#94A3B8"
                 android:textSize="13sp" />
 
@@ -221,6 +221,16 @@
                 android:padding="8dp"
                 android:text="Don't have an account? Register here"
                 android:textColor="#FACC15"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tvSkipOffline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:padding="8dp"
+                android:text="Continue as Guest (Offline Mode) →"
+                android:textColor="#64748B"
                 android:textSize="13sp" />
 
         </LinearLayout>

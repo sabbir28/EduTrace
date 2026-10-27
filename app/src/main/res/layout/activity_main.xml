@@ -33,6 +33,69 @@
             android:orientation="vertical"
             android:padding="20dp">
 
+            <!-- Cloud Sync / Login Banner (Visible when not logged in) -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardCloudPrompt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                app:cardBackgroundColor="#1E293B"
+                app:cardCornerRadius="16dp"
+                app:strokeColor="#FACC15"
+                app:strokeWidth="1dp"
+                android:visibility="gone">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@drawable/ic_cloud"
+                        app:tint="#FACC15" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="14dp"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="EduTrace Cloud Sync"
+                            android:textColor="#FFFFFF"
+                            android:textStyle="bold"
+                            android:textSize="14sp" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Sign in to sync your study progress online"
+                            android:textColor="#94A3B8"
+                            android:textSize="12sp" />
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBannerLogin"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="Sign In"
+                        android:textSize="12sp"
+                        android:textColor="#0F172A"
+                        app:cornerRadius="8dp"
+                        android:backgroundTint="#FACC15"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Today's Summary Glass Card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

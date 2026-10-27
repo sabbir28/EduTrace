@@ -103,7 +103,7 @@ EduTrace follows standard Android Jetpack architecture principles:
 ```
 app/src/main/java/org/sabbir/edutrace/
 ├── data/
-│   ├── cloud/           # CloudDbManager (PostgreSQL sync & auth), CloudUser
+│   ├── cloud/           # CloudDbManager (EduTrace REST API sync & JWT auth), CloudUser
 │   ├── db/              # Room Database, DAOs, and SQLite configuration
 │   ├── models/          # Entities: Degree, Subject, StudySession
 │   └── repository/      # Repository pattern mediating database operations

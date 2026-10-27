@@ -4,22 +4,24 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.sabbir.edutrace.data.db.StudyDao;
 import org.sabbir.edutrace.data.db.StudyDatabase;
 import org.sabbir.edutrace.data.models.Degree;
 import org.sabbir.edutrace.data.models.StudySession;
 import org.sabbir.edutrace.data.models.Subject;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.ConnectException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -28,33 +30,43 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Manages secure cloud persistence and synchronization with the remote PostgreSQL database.
- * Connection credentials are fully obfuscated at compile-time to prevent plain string extraction.
+ * Manages modern RESTful cloud persistence and synchronization with the EduTrace Server.
+ * All operations communicate seamlessly via REST JSON endpoints (JWT Authentication, Sync, Backup, Restore).
  */
 public class CloudDbManager {
+    private static final String TAG = "EduTraceCloud";
     private static final String PREFS_AUTH = "EduTrace_Cloud_Auth";
     private static final String KEY_USER_ID = "cloud_user_id";
     private static final String KEY_USERNAME = "cloud_username";
     private static final String KEY_EMAIL = "cloud_email";
     private static final String KEY_DISPLAY_NAME = "cloud_display_name";
+    private static final String KEY_ACCESS_TOKEN = "cloud_access_token";
     private static final String KEY_IS_LOGGED_IN = "cloud_logged_in";
     private static final String KEY_LAST_BACKUP = "cloud_last_backup";
     public static final String KEY_AUTO_BACKUP = "cloud_auto_backup_enabled";
+    public static final String KEY_SERVER_URL = "cloud_server_api_url";
 
-    // Obfuscated database connection parameters (protected from plain extraction)
-    private static final byte[] ENC_HOST = new byte[] { (byte) 0x06, (byte) 0x19, (byte) 0x06, (byte) 0x51, (byte) 0xB3, (byte) 0xA7, (byte) 0xF0, (byte) 0xE8, (byte) 0xB2, (byte) 0xD5, (byte) 0xC2, (byte) 0xC1, (byte) 0xCF, (byte) 0xAA, (byte) 0xAC, (byte) 0xB1, (byte) 0xA4, (byte) 0xAA, (byte) 0xC8, (byte) 0xDD, (byte) 0xDD, (byte) 0x8A, (byte) 0x6E, (byte) 0x67, (byte) 0x63, (byte) 0x73, (byte) 0x6F, (byte) 0x0A, (byte) 0x58, (byte) 0x47, (byte) 0x49, (byte) 0x21, (byte) 0x25, (byte) 0x2F, (byte) 0x26, (byte) 0x39, (byte) 0x4D, (byte) 0x09, (byte) 0x1E, (byte) 0x15 };
-    private static final byte[] ENC_PORT = new byte[] { (byte) 0x52, (byte) 0x5A, (byte) 0x46, (byte) 0x4E };
-    private static final byte[] ENC_DB = new byte[] { (byte) 0x17, (byte) 0x01, (byte) 0x06, (byte) 0x08, (byte) 0xE4, (byte) 0xF8, (byte) 0xF4, (byte) 0xEB };
-    private static final byte[] ENC_USER = new byte[] { (byte) 0x17, (byte) 0x01, (byte) 0x06, (byte) 0x08, (byte) 0xE4, (byte) 0xF8, (byte) 0xF4, (byte) 0xEB, (byte) 0xB1, (byte) 0xD1, (byte) 0xC4, (byte) 0xD0, (byte) 0xDA, (byte) 0xA9, (byte) 0xBA, (byte) 0xB4, (byte) 0xA1, (byte) 0xB9, (byte) 0x95, (byte) 0x80, (byte) 0x9B, (byte) 0x94, (byte) 0x71, (byte) 0x7A, (byte) 0x7F, (byte) 0x7E, (byte) 0x6C, (byte) 0x55, (byte) 0x49 };
-    private static final byte[] ENC_PASS = new byte[] { (byte) 0x14, (byte) 0x0F, (byte) 0x17, (byte) 0x1E, (byte) 0xEA, (byte) 0xF8, (byte) 0xA3, (byte) 0xA0, (byte) 0xB1, (byte) 0xC1, (byte) 0xC4, (byte) 0xC0, (byte) 0xD3, (byte) 0xB7, (byte) 0xAB, (byte) 0xB2, (byte) 0xF9, (byte) 0xB7, (byte) 0x8A };
-    private static final byte[] ENC_SSL = new byte[] { (byte) 0x15, (byte) 0x0B, (byte) 0x04, (byte) 0x09, (byte) 0xEA, (byte) 0xF8, (byte) 0xF4 };
+    // Standard server endpoints (Vercel Production, Emulator, Host PC Wi-Fi, and Localhost)
+    public static final String DEFAULT_PROD_URL = "https://edutrace-theta.vercel.app/api";
+    public static final String DEFAULT_EMULATOR_URL = "http://10.0.2.2:5000/api";
+    public static final String DEFAULT_WIFI_URL = "http://192.168.10.120:5000/api";
+    public static final String DEFAULT_LOCAL_URL = "http://127.0.0.1:5000/api";
 
     private static final ExecutorService cloudExecutor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private static boolean tablesInitialized = false;
 
     public interface AuthCallback {
         void onSuccess(CloudUser user);
+        void onError(String message);
+    }
+
+    public interface AvailabilityCallback {
+        void onAvailable();
+        void onError(String message);
+    }
+
+    public interface EmailLookupCallback {
+        void onFound(String username, String email);
         void onError(String message);
     }
 
@@ -69,132 +81,38 @@ public class CloudDbManager {
         void onError(String message);
     }
 
-    private static String decode(byte[] data) {
-        byte key = 0x5A;
-        byte[] out = new byte[data.length];
-        for (int i = 0; i < data.length; i++) {
-            out[i] = (byte) (data[i] ^ ((key + (i * 7 + 13)) & 0xFF));
-        }
-        return new String(out, StandardCharsets.UTF_8);
+    public interface HealthCallback {
+        void onSuccess(String status);
+        void onError(String message);
     }
 
-    private static void ensureDriverRegistered() {
-        try {
-            java.sql.DriverManager.registerDriver(new org.postgresql.Driver());
-        } catch (Throwable ignored) {
-            try {
-                Class.forName("org.postgresql.Driver");
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-        }
+    public static String getServerUrl(Context context) {
+        if (context == null) return DEFAULT_PROD_URL;
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE);
+        return prefs.getString(KEY_SERVER_URL, DEFAULT_PROD_URL);
     }
 
-    private static Connection getDirectConnection() throws SQLException {
-        ensureDriverRegistered();
-        String host = decode(ENC_HOST);
-        String port = decode(ENC_PORT);
-        String db = decode(ENC_DB);
-        String user = decode(ENC_USER);
-        String pass = decode(ENC_PASS);
-        String ssl = decode(ENC_SSL);
-
-        java.util.Properties props = new java.util.Properties();
-        props.setProperty("user", user);
-        props.setProperty("password", pass);
-        props.setProperty("ssl", "true");
-        props.setProperty("sslmode", ssl);
-        props.setProperty("loginTimeout", "8");
-        props.setProperty("connectTimeout", "8");
-        props.setProperty("socketTimeout", "15");
-
-        String primaryUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db;
-        Connection conn = null;
-
-        try {
-            DriverManager.setLoginTimeout(8);
-            conn = DriverManager.getConnection(primaryUrl, props);
-        } catch (SQLException primaryEx) {
-            // Try with NonValidatingFactory in case mobile network CA or truststore fails
-            java.util.Properties fallbackProps = new java.util.Properties();
-            fallbackProps.putAll(props);
-            fallbackProps.setProperty("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
-
-            try {
-                conn = DriverManager.getConnection(primaryUrl, fallbackProps);
-            } catch (SQLException sslEx) {
-                // Secondary fallback on Supabase transaction pooler port (6543)
-                String fallbackUrl = "jdbc:postgresql://" + host + ":6543/" + db;
-                try {
-                    conn = DriverManager.getConnection(fallbackUrl, fallbackProps);
-                } catch (SQLException secondaryEx) {
-                    throw primaryEx; // Throw initial exception if all fallbacks failed
-                }
-            }
+    public static void setServerUrl(Context context, String url) {
+        if (context == null || url == null) return;
+        String cleanUrl = url.trim();
+        if (cleanUrl.endsWith("/")) {
+            cleanUrl = cleanUrl.substring(0, cleanUrl.length() - 1);
         }
-
-        if (conn != null && !tablesInitialized) {
-            initTablesIfNotExist(conn);
-            tablesInitialized = true;
+        if (!cleanUrl.endsWith("/api")) {
+            cleanUrl = cleanUrl + "/api";
         }
-        return conn;
-    }
-
-    private static void initTablesIfNotExist(Connection conn) {
-        try (Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS edutrace_users (" +
-                    "id SERIAL PRIMARY KEY, " +
-                    "username VARCHAR(100) UNIQUE NOT NULL, " +
-                    "email VARCHAR(150), " +
-                    "password_hash VARCHAR(128) NOT NULL, " +
-                    "salt VARCHAR(64) NOT NULL, " +
-                    "display_name VARCHAR(150), " +
-                    "created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP" +
-                    ");");
-
-            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS edutrace_user_degrees (" +
-                    "id SERIAL PRIMARY KEY, " +
-                    "user_id INT NOT NULL, " +
-                    "local_id INT NOT NULL, " +
-                    "name VARCHAR(255) NOT NULL, " +
-                    "color_hex VARCHAR(50), " +
-                    "synced_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, " +
-                    "CONSTRAINT uq_edutrace_degree UNIQUE (user_id, local_id)" +
-                    ");");
-
-            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS edutrace_user_subjects (" +
-                    "id SERIAL PRIMARY KEY, " +
-                    "user_id INT NOT NULL, " +
-                    "local_id INT NOT NULL, " +
-                    "degree_local_id INT, " +
-                    "name VARCHAR(255) NOT NULL, " +
-                    "color_hex VARCHAR(50), " +
-                    "synced_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, " +
-                    "CONSTRAINT uq_edutrace_subject UNIQUE (user_id, local_id)" +
-                    ");");
-
-            stmt.executeUpdate("CREATE TABLE IF NOT EXISTS edutrace_user_sessions (" +
-                    "id SERIAL PRIMARY KEY, " +
-                    "user_id INT NOT NULL, " +
-                    "local_id INT NOT NULL, " +
-                    "subject_local_id INT, " +
-                    "start_timestamp BIGINT NOT NULL, " +
-                    "end_timestamp BIGINT NOT NULL, " +
-                    "break_duration_millis BIGINT DEFAULT 0, " +
-                    "distraction_count INT DEFAULT 0, " +
-                    "notes TEXT, " +
-                    "synced_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, " +
-                    "CONSTRAINT uq_edutrace_session UNIQUE (user_id, local_id)" +
-                    ");");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_SERVER_URL, cleanUrl)
+                .apply();
     }
 
     public static boolean isLoggedIn(Context context) {
         if (context == null) return false;
         SharedPreferences prefs = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE);
-        return prefs.getBoolean(KEY_IS_LOGGED_IN, false) && prefs.getInt(KEY_USER_ID, -1) != -1;
+        return prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+                && prefs.getInt(KEY_USER_ID, -1) != -1
+                && !prefs.getString(KEY_ACCESS_TOKEN, "").isEmpty();
     }
 
     public static CloudUser getCurrentUser(Context context) {
@@ -204,7 +122,14 @@ public class CloudDbManager {
         String username = prefs.getString(KEY_USERNAME, "");
         String email = prefs.getString(KEY_EMAIL, "");
         String displayName = prefs.getString(KEY_DISPLAY_NAME, username);
-        return new CloudUser(id, username, email, displayName);
+        String token = prefs.getString(KEY_ACCESS_TOKEN, "");
+        return new CloudUser(id, username, email, displayName, token);
+    }
+
+    public static String getAccessToken(Context context) {
+        if (context == null) return "";
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE);
+        return prefs.getString(KEY_ACCESS_TOKEN, "");
     }
 
     public static String getLastBackupTime(Context context) {
@@ -218,14 +143,25 @@ public class CloudDbManager {
 
     public static void logout(Context context) {
         if (context == null) return;
+        final String token = getAccessToken(context);
         context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
                 .edit()
                 .remove(KEY_USER_ID)
                 .remove(KEY_USERNAME)
                 .remove(KEY_EMAIL)
                 .remove(KEY_DISPLAY_NAME)
+                .remove(KEY_ACCESS_TOKEN)
                 .putBoolean(KEY_IS_LOGGED_IN, false)
                 .apply();
+
+        // Notify server asynchronously
+        if (!token.isEmpty()) {
+            cloudExecutor.execute(() -> {
+                try {
+                    sendApiRequest(context, "/auth/logout", "POST", null, token);
+                } catch (Throwable ignored) {}
+            });
+        }
     }
 
     private static void saveUserSession(Context context, CloudUser user) {
@@ -235,253 +171,286 @@ public class CloudDbManager {
                 .putString(KEY_USERNAME, user.getUsername())
                 .putString(KEY_EMAIL, user.getEmail())
                 .putString(KEY_DISPLAY_NAME, user.getDisplayName())
+                .putString(KEY_ACCESS_TOKEN, user.getToken() != null ? user.getToken() : "")
                 .putBoolean(KEY_IS_LOGGED_IN, true)
                 .apply();
     }
 
-    private static String hashPassword(String password, String salt) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest((password + ":" + salt).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("SHA-256 algorithm missing", e);
+    // ==========================================
+    // HTTP API Transport Implementation
+    // ==========================================
+
+    private static class ApiResponse {
+        int statusCode;
+        JSONObject json;
+        String rawBody;
+        String errorMessage;
+
+        boolean isSuccess() {
+            return statusCode >= 200 && statusCode < 300;
         }
     }
 
-    private static String generateSalt() {
-        SecureRandom sr = new SecureRandom();
-        byte[] salt = new byte[16];
-        sr.nextBytes(salt);
-        StringBuilder sb = new StringBuilder();
-        for (byte b : salt) {
-            sb.append(String.format("%02x", b));
+    private static ApiResponse sendApiRequest(Context context, String endpoint, String method, JSONObject payload, String token) {
+        String primaryBase = getServerUrl(context);
+        ApiResponse resp = executeSingleRequest(primaryBase, endpoint, method, payload, token);
+
+        // Fallback: if default emulator URL cannot connect, try Wi-Fi host URL automatically
+        if (!resp.isSuccess() && resp.errorMessage != null && resp.errorMessage.contains("Connect")
+                && DEFAULT_EMULATOR_URL.equals(primaryBase)) {
+            Log.d(TAG, "Primary emulator URL failed, attempting Wi-Fi fallback: " + DEFAULT_WIFI_URL);
+            ApiResponse fallback = executeSingleRequest(DEFAULT_WIFI_URL, endpoint, method, payload, token);
+            if (fallback.isSuccess() || fallback.statusCode > 0) {
+                setServerUrl(context, DEFAULT_WIFI_URL);
+                return fallback;
+            }
         }
-        return sb.toString();
+        return resp;
+    }
+
+    private static ApiResponse executeSingleRequest(String baseUrl, String endpoint, String method, JSONObject payload, String token) {
+        ApiResponse result = new ApiResponse();
+        HttpURLConnection conn = null;
+        try {
+            String fullUrl = baseUrl + (endpoint.startsWith("/") ? endpoint : "/" + endpoint);
+            URL url = new URL(fullUrl);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod(method);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
+            conn.setDoInput(true);
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+
+            if (token != null && !token.trim().isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
+
+            if (payload != null && ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method))) {
+                conn.setDoOutput(true);
+                byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(bytes);
+                    os.flush();
+                }
+            }
+
+            int code = conn.getResponseCode();
+            result.statusCode = code;
+
+            InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+            if (is != null) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+                reader.close();
+                result.rawBody = sb.toString();
+
+                try {
+                    result.json = new JSONObject(result.rawBody);
+                } catch (Exception ignored) {
+                    // Raw string body
+                }
+            }
+
+            if (!result.isSuccess()) {
+                String errMsg = "Request failed (" + code + ")";
+                if (result.json != null) {
+                    if (result.json.has("message")) errMsg = result.json.getString("message");
+                    else if (result.json.has("error")) errMsg = result.json.getString("error");
+                }
+                result.errorMessage = errMsg;
+            }
+
+        } catch (ConnectException ce) {
+            result.statusCode = 0;
+            result.errorMessage = "Unable to connect to EduTrace Server. Please check network/host URL.";
+        } catch (Exception e) {
+            result.statusCode = 0;
+            result.errorMessage = e.getMessage() != null ? e.getMessage() : "Network error";
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return result;
+    }
+
+    // ==========================================
+    // Public Online API Operations
+    // ==========================================
+
+    public static void checkServerHealth(Context context, HealthCallback callback) {
+        cloudExecutor.execute(() -> {
+            ApiResponse res = sendApiRequest(context, "/health", "GET", null, null);
+            if (res.isSuccess()) {
+                mainHandler.post(() -> callback.onSuccess("EduTrace Server is Online 🟢"));
+            } else {
+                mainHandler.post(() -> callback.onError(res.errorMessage != null ? res.errorMessage : "Server unreachable"));
+            }
+        });
+    }
+
+    public static void checkUserAvailability(Context context, String username, String email, AvailabilityCallback callback) {
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (username != null && !username.trim().isEmpty()) payload.put("username", username.trim());
+                if (email != null && !email.trim().isEmpty()) payload.put("email", email.trim());
+
+                ApiResponse res = sendApiRequest(context, "/auth/check-availability", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    boolean available = res.json.optBoolean("available", true);
+                    if (available) {
+                        mainHandler.post(callback::onAvailable);
+                    } else {
+                        String msg = res.json.optString("message", "User identifier already in use.");
+                        mainHandler.post(() -> callback.onError(msg));
+                    }
+                } else {
+                    String msg = res.errorMessage != null ? res.errorMessage : "Server validation error";
+                    mainHandler.post(() -> callback.onError(msg));
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError("Network error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void checkUserAvailability(String username, String email, AvailabilityCallback callback) {
+        checkUserAvailability(null, username, email, callback);
     }
 
     public static void register(Context context, String username, String email, String password, String displayName, AuthCallback callback) {
         cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                String cleanUsername = username.trim().toLowerCase(Locale.ROOT);
-                String cleanEmail = (email != null) ? email.trim().toLowerCase(Locale.ROOT) : "";
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username", username.trim());
+                payload.put("display_name", (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : username.trim());
+                payload.put("first_name", (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : username.trim());
+                payload.put("email", email.trim().toLowerCase(Locale.ROOT));
+                payload.put("password", password);
 
-                // Check username uniqueness
-                try (PreparedStatement checkStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(username) = ?")) {
-                    checkStmt.setString(1, cleanUsername);
-                    try (ResultSet rs = checkStmt.executeQuery()) {
-                        if (rs.next()) {
-                            postAuthError(callback, "Username is already registered.");
-                            return;
-                        }
-                    }
-                }
+                ApiResponse res = sendApiRequest(context, "/auth/register", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    String token = res.json.optString("access_token", "");
+                    JSONObject userObj = res.json.optJSONObject("user");
+                    int userId = (userObj != null) ? userObj.optInt("id", 1) : 1;
+                    String retEmail = (userObj != null) ? userObj.optString("email", email) : email;
+                    String retName = (userObj != null) ? userObj.optString("first_name", displayName) : displayName;
 
-                // Check email uniqueness if email provided
-                if (!cleanEmail.isEmpty()) {
-                    try (PreparedStatement checkEmailStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(email) = ?")) {
-                        checkEmailStmt.setString(1, cleanEmail);
-                        try (ResultSet rs = checkEmailStmt.executeQuery()) {
-                            if (rs.next()) {
-                                postAuthError(callback, "Email address is already in use.");
-                                return;
-                            }
-                        }
-                    }
-                }
-
-                String salt = generateSalt();
-                String hash = hashPassword(password, salt);
-                String finalDisplayName = (displayName != null && !displayName.trim().isEmpty()) ? displayName.trim() : username.trim();
-
-                try (PreparedStatement insertStmt = conn.prepareStatement(
-                        "INSERT INTO edutrace_users (username, email, password_hash, salt, display_name) VALUES (?, ?, ?, ?, ?) RETURNING id")) {
-                    insertStmt.setString(1, cleanUsername);
-                    insertStmt.setString(2, cleanEmail);
-                    insertStmt.setString(3, hash);
-                    insertStmt.setString(4, salt);
-                    insertStmt.setString(5, finalDisplayName);
-
-                    try (ResultSet rs = insertStmt.executeQuery()) {
-                        if (rs.next()) {
-                            int newId = rs.getInt(1);
-                            CloudUser user = new CloudUser(newId, cleanUsername, cleanEmail, finalDisplayName);
-                            saveUserSession(context, user);
-                            postAuthSuccess(callback, user);
-                        } else {
-                            postAuthError(callback, "Failed to create user account.");
-                        }
-                    }
+                    CloudUser user = new CloudUser(userId, username, retEmail, retName, token);
+                    saveUserSession(context, user);
+                    mainHandler.post(() -> callback.onSuccess(user));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Registration failed.";
+                    mainHandler.post(() -> callback.onError(err));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-                postAuthError(callback, "Database error: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Registration error: " + e.getMessage()));
             }
         });
     }
 
     public static void login(Context context, String usernameOrEmail, String password, AuthCallback callback) {
         cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                String cleanInput = usernameOrEmail.trim().toLowerCase(Locale.ROOT);
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username", usernameOrEmail.trim());
+                payload.put("email", usernameOrEmail.trim());
+                payload.put("password", password);
 
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "SELECT id, username, email, password_hash, salt, display_name FROM edutrace_users WHERE LOWER(username) = ? OR LOWER(email) = ?")) {
-                    stmt.setString(1, cleanInput);
-                    stmt.setString(2, cleanInput);
+                ApiResponse res = sendApiRequest(context, "/auth/login", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    String token = res.json.optString("access_token", "");
+                    JSONObject userObj = res.json.optJSONObject("user");
+                    int userId = (userObj != null) ? userObj.optInt("id", 1) : 1;
+                    String retEmail = (userObj != null) ? userObj.optString("email", "") : "";
+                    String retName = (userObj != null) ? userObj.optString("first_name", usernameOrEmail) : usernameOrEmail;
 
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            int id = rs.getInt("id");
-                            String username = rs.getString("username");
-                            String email = rs.getString("email");
-                            String storedHash = rs.getString("password_hash");
-                            String salt = rs.getString("salt");
-                            String displayName = rs.getString("display_name");
-
-                            String computedHash = hashPassword(password, salt);
-                            if (storedHash.equals(computedHash)) {
-                                CloudUser user = new CloudUser(id, username, email, displayName);
-                                saveUserSession(context, user);
-                                postAuthSuccess(callback, user);
-                            } else {
-                                postAuthError(callback, "Incorrect password. Please try again.");
-                            }
-                        } else {
-                            postAuthError(callback, "Account not found for username/email.");
-                        }
-                    }
+                    CloudUser user = new CloudUser(userId, usernameOrEmail, retEmail, retName, token);
+                    saveUserSession(context, user);
+                    mainHandler.post(() -> callback.onSuccess(user));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Login failed. Please check credentials.";
+                    mainHandler.post(() -> callback.onError(err));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-                postAuthError(callback, "Connection failed: " + e.getMessage());
+                mainHandler.post(() -> callback.onError("Login error: " + e.getMessage()));
             }
         });
     }
 
-    public interface AvailabilityCallback {
-        void onAvailable();
-        void onError(String message);
-    }
-
-    public interface EmailLookupCallback {
-        void onFound(String username, String email);
-        void onError(String message);
-    }
-
-    public static void checkUserAvailability(String username, String email, AvailabilityCallback callback) {
+    public static void findUserEmail(Context context, String usernameOrEmail, EmailLookupCallback callback) {
         cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                String cleanUsername = username.trim().toLowerCase(Locale.ROOT);
-                String cleanEmail = (email != null) ? email.trim().toLowerCase(Locale.ROOT) : "";
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username_or_email", usernameOrEmail.trim());
 
-                try (PreparedStatement checkStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(username) = ?")) {
-                    checkStmt.setString(1, cleanUsername);
-                    try (ResultSet rs = checkStmt.executeQuery()) {
-                        if (rs.next()) {
-                            if (callback != null) mainHandler.post(() -> callback.onError("Username is already registered."));
-                            return;
-                        }
+                ApiResponse res = sendApiRequest(context, "/auth/find-email", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    String user = res.json.optString("username", usernameOrEmail);
+                    String email = res.json.optString("email", "");
+                    if (email.isEmpty()) {
+                        mainHandler.post(() -> callback.onError("No email found for this user."));
+                    } else {
+                        mainHandler.post(() -> callback.onFound(user, email));
                     }
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "User account not found.";
+                    mainHandler.post(() -> callback.onError(err));
                 }
-
-                if (!cleanEmail.isEmpty()) {
-                    try (PreparedStatement checkEmailStmt = conn.prepareStatement("SELECT id FROM edutrace_users WHERE LOWER(email) = ?")) {
-                        checkEmailStmt.setString(1, cleanEmail);
-                        try (ResultSet rs = checkEmailStmt.executeQuery()) {
-                            if (rs.next()) {
-                                if (callback != null) mainHandler.post(() -> callback.onError("Email is already in use."));
-                                return;
-                            }
-                        }
-                    }
-                }
-
-                if (callback != null) mainHandler.post(callback::onAvailable);
             } catch (Exception e) {
-                e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Connection error: " + e.getMessage()));
+                mainHandler.post(() -> callback.onError("Lookup error: " + e.getMessage()));
             }
         });
     }
 
     public static void findUserEmail(String usernameOrEmail, EmailLookupCallback callback) {
+        findUserEmail(null, usernameOrEmail, callback);
+    }
+
+    public static void resetPassword(Context context, String usernameOrEmail, String newPassword, AuthCallback callback) {
         cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                String clean = usernameOrEmail.trim().toLowerCase(Locale.ROOT);
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "SELECT username, email FROM edutrace_users WHERE LOWER(username) = ? OR LOWER(email) = ?")) {
-                    stmt.setString(1, clean);
-                    stmt.setString(2, clean);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            String user = rs.getString("username");
-                            String email = rs.getString("email");
-                            if (email == null || email.trim().isEmpty()) {
-                                if (callback != null) mainHandler.post(() -> callback.onError("No email address associated with this account."));
-                            } else {
-                                if (callback != null) mainHandler.post(() -> callback.onFound(user, email));
-                            }
-                        } else {
-                            if (callback != null) mainHandler.post(() -> callback.onError("User account not found."));
-                        }
-                    }
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username_or_email", usernameOrEmail.trim());
+                payload.put("new_password", newPassword);
+
+                ApiResponse res = sendApiRequest(context, "/auth/reset-password", "POST", payload, null);
+                if (res.isSuccess()) {
+                    CloudUser dummyUser = new CloudUser(-1, usernameOrEmail, "", usernameOrEmail, "");
+                    mainHandler.post(() -> callback.onSuccess(dummyUser));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Password reset failed.";
+                    mainHandler.post(() -> callback.onError(err));
                 }
             } catch (Exception e) {
-                e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Database error: " + e.getMessage()));
+                mainHandler.post(() -> callback.onError("Password reset error: " + e.getMessage()));
             }
         });
     }
 
     public static void resetPassword(String usernameOrEmail, String newPassword, AuthCallback callback) {
-        cloudExecutor.execute(() -> {
-            try (Connection conn = getDirectConnection()) {
-                String clean = usernameOrEmail.trim().toLowerCase(Locale.ROOT);
-                String salt = generateSalt();
-                String hash = hashPassword(newPassword, salt);
-
-                try (PreparedStatement stmt = conn.prepareStatement(
-                        "UPDATE edutrace_users SET password_hash = ?, salt = ? WHERE LOWER(username) = ? OR LOWER(email) = ? RETURNING id, username, email, display_name")) {
-                    stmt.setString(1, hash);
-                    stmt.setString(2, salt);
-                    stmt.setString(3, clean);
-                    stmt.setString(4, clean);
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            int id = rs.getInt("id");
-                            String username = rs.getString("username");
-                            String email = rs.getString("email");
-                            String displayName = rs.getString("display_name");
-                            CloudUser user = new CloudUser(id, username, email, displayName);
-                            postAuthSuccess(callback, user);
-                        } else {
-                            postAuthError(callback, "Account not found.");
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                postAuthError(callback, "Database error: " + e.getMessage());
-            }
-        });
+        resetPassword(null, usernameOrEmail, newPassword, callback);
     }
+
+    // ==========================================
+    // Bulk Cloud Sync (Backup & Restore)
+    // ==========================================
 
     public static void backupData(Context context, SyncProgressCallback callback) {
         if (!isLoggedIn(context)) {
-            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to backup data to the cloud."));
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to backup data to EduTrace Server."));
             return;
         }
 
-        final int userId = getCurrentUser(context).getId();
+        final String token = getAccessToken(context);
 
         cloudExecutor.execute(() -> {
             try {
-                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to PostgreSQL cloud database..."));
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Collecting local study data..."));
                 StudyDatabase localDb = StudyDatabase.getDatabase(context);
                 StudyDao dao = localDb.studyDao();
 
@@ -489,66 +458,102 @@ public class CloudDbManager {
                 List<Subject> subjects = dao.getSubjectsListSync();
                 List<StudySession> sessions = dao.getSessionsListSync();
 
-                try (Connection conn = getDirectConnection()) {
-                    conn.setAutoCommit(false);
+                JSONObject rootPayload = new JSONObject();
 
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading " + degrees.size() + " degrees & " + subjects.size() + " subjects..."));
-                    // 1. Sync Degrees
-                    String degreeSql = "INSERT INTO edutrace_user_degrees (user_id, local_id, name, color_hex, synced_at) " +
-                            "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) " +
-                            "ON CONFLICT (user_id, local_id) " +
-                            "DO UPDATE SET name = EXCLUDED.name, color_hex = EXCLUDED.color_hex, synced_at = CURRENT_TIMESTAMP;";
-                    try (PreparedStatement stmt = conn.prepareStatement(degreeSql)) {
-                        for (Degree d : degrees) {
-                            stmt.setInt(1, userId);
-                            stmt.setInt(2, d.id);
-                            stmt.setString(3, d.name);
-                            stmt.setString(4, d.colorHex);
-                            stmt.addBatch();
+                // 1. Degrees
+                JSONArray degArr = new JSONArray();
+                for (Degree d : degrees) {
+                    JSONObject dObj = new JSONObject();
+                    dObj.put("local_id", d.id);
+                    dObj.put("name", d.name);
+                    dObj.put("color_hex", d.colorHex != null ? d.colorHex : "#3B82F6");
+                    degArr.put(dObj);
+                }
+                rootPayload.put("degrees", degArr);
+
+                // 2. Subjects
+                JSONArray subArr = new JSONArray();
+                for (Subject s : subjects) {
+                    JSONObject sObj = new JSONObject();
+                    sObj.put("local_id", s.id);
+                    sObj.put("degree_local_id", s.degreeId);
+                    sObj.put("name", s.name);
+                    sObj.put("color_hex", s.colorHex != null ? s.colorHex : "#2563EB");
+                    subArr.put(sObj);
+                }
+                rootPayload.put("subjects", subArr);
+
+                // 3. Sessions
+                JSONArray sessArr = new JSONArray();
+                for (StudySession s : sessions) {
+                    JSONObject sessObj = new JSONObject();
+                    sessObj.put("local_id", s.id);
+                    sessObj.put("subject_local_id", s.subjectId);
+                    sessObj.put("start_timestamp", s.startTimestamp);
+                    sessObj.put("end_timestamp", s.endTimestamp);
+                    sessObj.put("break_duration_millis", s.breakDurationMillis);
+                    sessObj.put("distraction_count", s.distractionCount);
+                    sessObj.put("notes", s.notes != null ? s.notes : "");
+                    sessArr.put(sessObj);
+                }
+                rootPayload.put("sessions", sessArr);
+
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading to EduTrace Cloud Server..."));
+
+                ApiResponse res = sendApiRequest(context, "/sync/backup", "POST", rootPayload, token);
+
+                if (res.isSuccess()) {
+                    long now = System.currentTimeMillis();
+                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                            .edit()
+                            .putLong(KEY_LAST_BACKUP, now)
+                            .apply();
+
+                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                    String successMsg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to EduTrace Server! ☁️";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
+                } else if (res.statusCode == 404) {
+                    // Fallback: sync directly using individual REST endpoints
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Syncing records to EduTrace Server..."));
+                    int syncedDegrees = 0;
+                    int syncedSubjects = 0;
+
+                    for (Degree d : degrees) {
+                        JSONObject dPayload = new JSONObject();
+                        dPayload.put("name", d.name);
+                        dPayload.put("color", d.colorHex != null ? d.colorHex : "#3B82F6");
+                        ApiResponse dRes = sendApiRequest(context, "/degrees", "POST", dPayload, token);
+                        int serverDegreeId = -1;
+                        if (dRes.isSuccess() && dRes.json != null) {
+                            JSONObject createdDegree = dRes.json.optJSONObject("degree");
+                            if (createdDegree != null) serverDegreeId = createdDegree.optInt("id", -1);
                         }
-                        stmt.executeBatch();
-                    }
-
-                    // 2. Sync Subjects
-                    String subjectSql = "INSERT INTO edutrace_user_subjects (user_id, local_id, degree_local_id, name, color_hex, synced_at) " +
-                            "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
-                            "ON CONFLICT (user_id, local_id) " +
-                            "DO UPDATE SET degree_local_id = EXCLUDED.degree_local_id, name = EXCLUDED.name, color_hex = EXCLUDED.color_hex, synced_at = CURRENT_TIMESTAMP;";
-                    try (PreparedStatement stmt = conn.prepareStatement(subjectSql)) {
-                        for (Subject s : subjects) {
-                            stmt.setInt(1, userId);
-                            stmt.setInt(2, s.id);
-                            stmt.setInt(3, s.degreeId);
-                            stmt.setString(4, s.name);
-                            stmt.setString(5, s.colorHex);
-                            stmt.addBatch();
+                        if (serverDegreeId != -1) {
+                            syncedDegrees++;
+                            JSONObject cPayload = new JSONObject();
+                            cPayload.put("name", "Core Studies");
+                            cPayload.put("degree_id", serverDegreeId);
+                            ApiResponse cRes = sendApiRequest(context, "/courses", "POST", cPayload, token);
+                            int serverCourseId = -1;
+                            if (cRes.isSuccess() && cRes.json != null) {
+                                JSONObject createdCourse = cRes.json.optJSONObject("course");
+                                if (createdCourse != null) serverCourseId = createdCourse.optInt("id", -1);
+                            }
+                            if (serverCourseId != -1) {
+                                for (Subject s : subjects) {
+                                    if (s.degreeId == d.id) {
+                                        JSONObject sPayload = new JSONObject();
+                                        sPayload.put("name", s.name);
+                                        sPayload.put("color", s.colorHex != null ? s.colorHex : "#2563EB");
+                                        sPayload.put("course_id", serverCourseId);
+                                        ApiResponse sRes = sendApiRequest(context, "/subjects", "POST", sPayload, token);
+                                        if (sRes.isSuccess()) syncedSubjects++;
+                                    }
+                                }
+                            }
                         }
-                        stmt.executeBatch();
                     }
-
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading " + sessions.size() + " study sessions..."));
-                    // 3. Sync Sessions
-                    String sessionSql = "INSERT INTO edutrace_user_sessions (user_id, local_id, subject_local_id, start_timestamp, end_timestamp, break_duration_millis, distraction_count, notes, synced_at) " +
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) " +
-                            "ON CONFLICT (user_id, local_id) " +
-                            "DO UPDATE SET subject_local_id = EXCLUDED.subject_local_id, start_timestamp = EXCLUDED.start_timestamp, end_timestamp = EXCLUDED.end_timestamp, break_duration_millis = EXCLUDED.break_duration_millis, distraction_count = EXCLUDED.distraction_count, notes = EXCLUDED.notes, synced_at = CURRENT_TIMESTAMP;";
-                    try (PreparedStatement stmt = conn.prepareStatement(sessionSql)) {
-                        for (StudySession s : sessions) {
-                            stmt.setInt(1, userId);
-                            stmt.setInt(2, s.id);
-                            stmt.setInt(3, s.subjectId);
-                            stmt.setLong(4, s.startTimestamp);
-                            stmt.setLong(5, s.endTimestamp);
-                            stmt.setLong(6, s.breakDurationMillis);
-                            stmt.setInt(7, s.distractionCount);
-                            stmt.setString(8, s.notes != null ? s.notes : "");
-                            stmt.addBatch();
-                        }
-                        stmt.executeBatch();
-                    }
-
-                    conn.commit();
-                    conn.setAutoCommit(true);
 
                     long now = System.currentTimeMillis();
                     context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
@@ -556,15 +561,16 @@ public class CloudDbManager {
                             .putLong(KEY_LAST_BACKUP, now)
                             .apply();
 
-                    // Also auto-update local safe vault
                     org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-
-                    String msg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to cloud! ☁️";
-                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                    String successMsg = "Successfully synced " + syncedDegrees + " degrees & " + syncedSubjects + " subjects to EduTrace Server! ☁️";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Backup failed.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Backup failed: " + e.getMessage()));
+                if (callback != null) mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
             }
         });
     }
@@ -592,16 +598,19 @@ public class CloudDbManager {
 
     public static void restoreData(Context context, SyncProgressCallback callback) {
         if (!isLoggedIn(context)) {
-            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from the cloud."));
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from EduTrace Server."));
             return;
         }
 
-        final int userId = getCurrentUser(context).getId();
+        final String token = getAccessToken(context);
 
         cloudExecutor.execute(() -> {
             try {
-                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to PostgreSQL cloud database..."));
-                try (Connection conn = getDirectConnection()) {
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to EduTrace REST API..."));
+
+                ApiResponse res = sendApiRequest(context, "/sync/restore", "GET", null, token);
+
+                if (res.isSuccess() && res.json != null) {
                     StudyDatabase localDb = StudyDatabase.getDatabase(context);
                     StudyDao dao = localDb.studyDao();
 
@@ -610,67 +619,151 @@ public class CloudDbManager {
                     int restoredSessions = 0;
 
                     if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring academic degrees & subjects..."));
-                    // 1. Restore Degrees
-                    try (PreparedStatement stmt = conn.prepareStatement(
-                            "SELECT local_id, name, color_hex FROM edutrace_user_degrees WHERE user_id = ? ORDER BY local_id ASC")) {
-                        stmt.setInt(1, userId);
-                        try (ResultSet rs = stmt.executeQuery()) {
-                            while (rs.next()) {
-                                Degree d = new Degree(rs.getString("name"), rs.getString("color_hex"));
-                                d.id = rs.getInt("local_id");
-                                dao.insertOrReplaceDegree(d);
+
+                    // 1. Degrees
+                    JSONArray degArr = res.json.optJSONArray("degrees");
+                    if (degArr != null) {
+                        for (int i = 0; i < degArr.length(); i++) {
+                            JSONObject d = degArr.getJSONObject(i);
+                            Degree degree = new Degree(d.getString("name"), d.optString("color_hex", "#3B82F6"));
+                            degree.id = d.getInt("local_id");
+                            dao.insertOrReplaceDegree(degree);
+                            restoredDegrees++;
+                        }
+                    }
+
+                    // 2. Subjects
+                    JSONArray subArr = res.json.optJSONArray("subjects");
+                    if (subArr != null) {
+                        for (int i = 0; i < subArr.length(); i++) {
+                            JSONObject s = subArr.getJSONObject(i);
+                            Subject subject = new Subject(
+                                    s.getInt("degree_local_id"),
+                                    s.getString("name"),
+                                    s.optString("color_hex", "#2563EB")
+                            );
+                            subject.id = s.getInt("local_id");
+                            dao.insertOrReplaceSubject(subject);
+                            restoredSubjects++;
+                        }
+                    }
+
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
+
+                    // 3. Sessions
+                    JSONArray sessArr = res.json.optJSONArray("sessions");
+                    if (sessArr != null) {
+                        for (int i = 0; i < sessArr.length(); i++) {
+                            JSONObject sess = sessArr.getJSONObject(i);
+                            StudySession session = new StudySession(
+                                    sess.getInt("subject_local_id"),
+                                    sess.getLong("start_timestamp"),
+                                    sess.getLong("end_timestamp"),
+                                    sess.optLong("break_duration_millis", 0),
+                                    sess.optInt("distraction_count", 0),
+                                    sess.optString("notes", "")
+                            );
+                            session.id = sess.getInt("local_id");
+                            dao.insertOrReplaceSession(session);
+                            restoredSessions++;
+                        }
+                    }
+
+                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees from cloud! 📥";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                } else if (res.statusCode == 404) {
+                    // Fallback: restore from individual endpoints /degrees and /subjects
+                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring from EduTrace Server records..."));
+                    StudyDatabase localDb = StudyDatabase.getDatabase(context);
+                    StudyDao dao = localDb.studyDao();
+                    int restoredDegrees = 0;
+                    int restoredSubjects = 0;
+
+                    ApiResponse degListRes = sendApiRequest(context, "/degrees", "GET", null, token);
+                    if (degListRes.isSuccess() && degListRes.json != null) {
+                        JSONArray items = degListRes.json.optJSONArray("items");
+                        if (items != null) {
+                            for (int i = 0; i < items.length(); i++) {
+                                JSONObject d = items.getJSONObject(i);
+                                Degree degree = new Degree(d.getString("name"), d.optString("color", "#3B82F6"));
+                                degree.id = d.getInt("id");
+                                dao.insertOrReplaceDegree(degree);
                                 restoredDegrees++;
                             }
                         }
                     }
 
-                    // 2. Restore Subjects
-                    try (PreparedStatement stmt = conn.prepareStatement(
-                            "SELECT local_id, degree_local_id, name, color_hex FROM edutrace_user_subjects WHERE user_id = ? ORDER BY local_id ASC")) {
-                        stmt.setInt(1, userId);
-                        try (ResultSet rs = stmt.executeQuery()) {
-                            while (rs.next()) {
-                                Subject s = new Subject(rs.getInt("degree_local_id"), rs.getString("name"), rs.getString("color_hex"));
-                                s.id = rs.getInt("local_id");
-                                dao.insertOrReplaceSubject(s);
+                    ApiResponse subListRes = sendApiRequest(context, "/subjects", "GET", null, token);
+                    if (subListRes.isSuccess() && subListRes.json != null) {
+                        JSONArray items = subListRes.json.optJSONArray("items");
+                        if (items != null) {
+                            for (int i = 0; i < items.length(); i++) {
+                                JSONObject s = items.getJSONObject(i);
+                                int courseId = s.optInt("course_id", 1);
+                                Subject subject = new Subject(courseId, s.getString("name"), s.optString("color", "#2563EB"));
+                                subject.id = s.getInt("id");
+                                dao.insertOrReplaceSubject(subject);
                                 restoredSubjects++;
                             }
                         }
                     }
 
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
-                    // 3. Restore Sessions
-                    try (PreparedStatement stmt = conn.prepareStatement(
-                            "SELECT local_id, subject_local_id, start_timestamp, end_timestamp, break_duration_millis, distraction_count, notes FROM edutrace_user_sessions WHERE user_id = ? ORDER BY local_id ASC")) {
-                        stmt.setInt(1, userId);
-                        try (ResultSet rs = stmt.executeQuery()) {
-                            while (rs.next()) {
-                                StudySession s = new StudySession(
-                                        rs.getInt("subject_local_id"),
-                                        rs.getLong("start_timestamp"),
-                                        rs.getLong("end_timestamp"),
-                                        rs.getLong("break_duration_millis"),
-                                        rs.getInt("distraction_count"),
-                                        rs.getString("notes")
+                    int restoredSessions = 0;
+                    ApiResponse sessListRes = sendApiRequest(context, "/sessions", "GET", null, token);
+                    if (sessListRes.isSuccess() && sessListRes.json != null) {
+                        JSONArray items = sessListRes.json.optJSONArray("items");
+                        if (items != null) {
+                            for (int i = 0; i < items.length(); i++) {
+                                JSONObject sess = items.getJSONObject(i);
+                                int subId = sess.optInt("subject_id", 1);
+                                String startedStr = sess.optString("started_at", "");
+                                String endedStr = sess.optString("ended_at", "");
+                                int durationSec = sess.optInt("duration_seconds", 0);
+                                long startMs = parseIsoOrEpoch(startedStr);
+                                long endMs = !endedStr.isEmpty() ? parseIsoOrEpoch(endedStr) : (startMs + (durationSec * 1000L));
+                                StudySession session = new StudySession(
+                                        subId,
+                                        startMs > 0 ? startMs : System.currentTimeMillis() - (durationSec * 1000L),
+                                        endMs > 0 ? endMs : System.currentTimeMillis(),
+                                        0,
+                                        0,
+                                        sess.optString("notes", "")
                                 );
-                                s.id = rs.getInt("local_id");
-                                dao.insertOrReplaceSession(s);
+                                session.id = sess.optInt("id", 0);
+                                dao.insertOrReplaceSession(session);
                                 restoredSessions++;
                             }
                         }
                     }
 
-                    // Also auto-update local safe vault
                     org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-
-                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees from cloud! 📥";
+                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects & " + restoredDegrees + " degrees from EduTrace Server! 📥";
                     if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to restore cloud data.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Restore failed: " + e.getMessage()));
+                if (callback != null) mainHandler.post(() -> callback.onError("Restore error: " + e.getMessage()));
             }
         });
+    }
+
+    private static long parseIsoOrEpoch(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty() || "null".equals(dateStr)) return 0;
+        try {
+            if (dateStr.matches("^\\d+$")) return Long.parseLong(dateStr);
+            String clean = dateStr.replace("Z", "");
+            if (clean.contains(".")) clean = clean.substring(0, clean.indexOf('.'));
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US);
+            Date d = sdf.parse(clean);
+            return d != null ? d.getTime() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     public static void restoreData(Context context, SyncCallback callback) {
@@ -692,21 +785,5 @@ public class CloudDbManager {
 
     public static void restoreData(Context context) {
         restoreData(context, (SyncProgressCallback) null);
-    }
-
-    private static void postAuthSuccess(AuthCallback callback, CloudUser user) {
-        if (callback != null) mainHandler.post(() -> callback.onSuccess(user));
-    }
-
-    private static void postAuthError(AuthCallback callback, String msg) {
-        if (callback != null) mainHandler.post(() -> callback.onError(msg));
-    }
-
-    private static void postSyncSuccess(SyncCallback callback, String msg) {
-        if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
-    }
-
-    private static void postSyncError(SyncCallback callback, String msg) {
-        if (callback != null) mainHandler.post(() -> callback.onError(msg));
     }
 }

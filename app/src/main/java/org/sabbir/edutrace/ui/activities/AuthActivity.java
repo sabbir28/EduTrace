@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.ui.activities;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Patterns;
 import android.view.LayoutInflater;
@@ -24,10 +25,12 @@ import org.sabbir.edutrace.utils.EmailManager;
 public class AuthActivity extends AppCompatActivity {
     private ActivityAuthBinding binding;
     private boolean isRegisterMode = false;
+    private boolean isFromStart = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        isFromStart = getIntent().getBooleanExtra("FORCE_LOGIN_ON_START", false);
         binding = ActivityAuthBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
@@ -35,10 +38,38 @@ public class AuthActivity extends AppCompatActivity {
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
-        binding.toolbar.setNavigationOnClickListener(v -> finish());
+        binding.toolbar.setNavigationOnClickListener(v -> handleBackOrExit());
+        binding.tvSkipOffline.setOnClickListener(v -> handleBackOrExit());
 
         setupListeners();
         updateModeUI();
+    }
+
+    private void handleBackOrExit() {
+        if (isFromStart) {
+            Intent intent = new Intent(AuthActivity.this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+        }
+        finish();
+    }
+
+    @Override
+    public void onBackPressed() {
+        handleBackOrExit();
+    }
+
+    private void onAuthSuccess(CloudUser user) {
+        setLoading(false);
+        Toast.makeText(AuthActivity.this, "Welcome, " + user.getDisplayName() + "! ☁️", Toast.LENGTH_SHORT).show();
+        if (isFromStart) {
+            Intent intent = new Intent(AuthActivity.this, MainActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+        } else {
+            setResult(RESULT_OK);
+        }
+        finish();
     }
 
     private void setupListeners() {
@@ -62,6 +93,7 @@ public class AuthActivity extends AppCompatActivity {
     private void updateModeUI() {
         if (isRegisterMode) {
             binding.tvAuthTitle.setText("Create Cloud Account");
+            binding.tilUsername.setHint("Username");
             binding.tilDisplayName.setVisibility(View.VISIBLE);
             binding.tilEmail.setVisibility(View.VISIBLE);
             binding.tvForgotPassword.setVisibility(View.GONE);
@@ -69,6 +101,7 @@ public class AuthActivity extends AppCompatActivity {
             binding.tvToggleModeHint.setText("Already have an account? Sign In");
         } else {
             binding.tvAuthTitle.setText("Sign In to Cloud");
+            binding.tilUsername.setHint("Username or Email");
             binding.tilDisplayName.setVisibility(View.GONE);
             binding.tilEmail.setVisibility(View.GONE);
             binding.tvForgotPassword.setVisibility(View.VISIBLE);
@@ -82,14 +115,14 @@ public class AuthActivity extends AppCompatActivity {
         String password = binding.etPassword.getText() != null ? binding.etPassword.getText().toString() : "";
 
         if (username.isEmpty()) {
-            binding.tilUsername.setError("Username is required");
+            binding.tilUsername.setError(isRegisterMode ? "Username is required" : "Username or email is required");
             return;
         } else {
             binding.tilUsername.setError(null);
         }
 
-        if (password.length() < 6) {
-            binding.tilPassword.setError("Password must be at least 6 characters");
+        if (password.length() < 8) {
+            binding.tilPassword.setError("Password must be at least 8 characters");
             return;
         } else {
             binding.tilPassword.setError(null);
@@ -100,7 +133,7 @@ public class AuthActivity extends AppCompatActivity {
             String email = binding.etEmail.getText() != null ? binding.etEmail.getText().toString().trim() : "";
 
             if (email.isEmpty() || !Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                binding.tilEmail.setError("Valid email address is required for OTP verification");
+                binding.tilEmail.setError("Valid email address is required for registration");
                 return;
             } else {
                 binding.tilEmail.setError(null);
@@ -123,7 +156,27 @@ public class AuthActivity extends AppCompatActivity {
                         @Override
                         public void onError(String error) {
                             setLoading(false);
-                            Toast.makeText(AuthActivity.this, "Failed to send verification email: " + error, Toast.LENGTH_LONG).show();
+                            // Fallback dialog for direct registration if SMTP email dispatch fails
+                            new AlertDialog.Builder(AuthActivity.this)
+                                    .setTitle("Direct Registration Option")
+                                    .setMessage("Could not dispatch OTP email (" + error + "). Would you like to proceed with direct cloud registration?")
+                                    .setPositiveButton("Register Directly", (dialog, which) -> {
+                                        setLoading(true);
+                                        CloudDbManager.register(AuthActivity.this, username, email, password, displayName, new CloudDbManager.AuthCallback() {
+                                            @Override
+                                            public void onSuccess(CloudUser user) {
+                                                onAuthSuccess(user);
+                                            }
+
+                                            @Override
+                                            public void onError(String message) {
+                                                setLoading(false);
+                                                Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
+                                            }
+                                        });
+                                    })
+                                    .setNegativeButton("Cancel", null)
+                                    .show();
                         }
                     });
                 }
@@ -140,10 +193,7 @@ public class AuthActivity extends AppCompatActivity {
             CloudDbManager.login(this, username, password, new CloudDbManager.AuthCallback() {
                 @Override
                 public void onSuccess(CloudUser user) {
-                    setLoading(false);
-                    Toast.makeText(AuthActivity.this, "Welcome back, " + user.getDisplayName() + "! ☁️", Toast.LENGTH_SHORT).show();
-                    setResult(RESULT_OK);
-                    finish();
+                    onAuthSuccess(user);
                 }
 
                 @Override
@@ -191,9 +241,7 @@ public class AuthActivity extends AppCompatActivity {
                 @Override
                 public void onSuccess(CloudUser user) {
                     dialog.dismiss();
-                    Toast.makeText(AuthActivity.this, "Account created & verified! Welcome, " + user.getDisplayName() + " 🎉", Toast.LENGTH_LONG).show();
-                    setResult(RESULT_OK);
-                    finish();
+                    onAuthSuccess(user);
                 }
 
                 @Override
@@ -290,8 +338,8 @@ public class AuthActivity extends AppCompatActivity {
                 return;
             }
 
-            if (newPassword.length() < 6) {
-                tilNewPass.setError("Password must be at least 6 characters");
+            if (newPassword.length() < 8) {
+                tilNewPass.setError("Password must be at least 8 characters");
                 return;
             } else {
                 tilNewPass.setError(null);

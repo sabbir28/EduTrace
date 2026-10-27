@@ -131,6 +131,8 @@ public class SettingsActivity extends AppCompatActivity {
             }
         });
 
+        binding.ivCloudBadge.setOnClickListener(v -> showServerConfigDialog());
+
         binding.btnBackupNow.setOnClickListener(v -> executeCloudBackup());
 
         binding.btnRestoreCloud.setOnClickListener(v -> {
@@ -149,6 +151,42 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         updateCloudUI();
+    }
+
+    private void showServerConfigDialog() {
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setText(CloudDbManager.getServerUrl(this));
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(Color.parseColor("#94A3B8"));
+
+        new AlertDialog.Builder(this)
+                .setTitle("EduTrace Server API 🌐")
+                .setMessage("Enter the REST API Base URL. Examples:\n• Emulator: http://10.0.2.2:5000/api\n• Local Wi-Fi: http://192.168.10.120:5000/api")
+                .setView(input)
+                .setPositiveButton("Save", (dialog, which) -> {
+                    String url = input.getText().toString().trim();
+                    if (!url.isEmpty()) {
+                        CloudDbManager.setServerUrl(this, url);
+                        Toast.makeText(this, "Server URL updated!", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNeutralButton("Test Health", (dialog, which) -> {
+                    String url = input.getText().toString().trim();
+                    if (!url.isEmpty()) CloudDbManager.setServerUrl(this, url);
+                    CloudDbManager.checkServerHealth(this, new CloudDbManager.HealthCallback() {
+                        @Override
+                        public void onSuccess(String status) {
+                            Toast.makeText(SettingsActivity.this, status, Toast.LENGTH_LONG).show();
+                        }
+
+                        @Override
+                        public void onError(String message) {
+                            Toast.makeText(SettingsActivity.this, "Connection test failed: " + message, Toast.LENGTH_LONG).show();
+                        }
+                    });
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private static class CloudProgressViewHolder {
@@ -192,7 +230,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void executeCloudBackup() {
-        CloudProgressViewHolder progress = showCloudProgressDialog("Backing Up to Cloud ☁️", "Connecting to PostgreSQL cloud database...");
+        CloudProgressViewHolder progress = showCloudProgressDialog("Backing Up to Cloud ☁️", "Connecting to EduTrace Server...");
         binding.btnBackupNow.setEnabled(false);
         binding.btnRestoreCloud.setEnabled(false);
 
@@ -235,7 +273,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void executeCloudRestore() {
-        CloudProgressViewHolder progress = showCloudProgressDialog("Restoring Cloud Data 📥", "Connecting to PostgreSQL cloud database...");
+        CloudProgressViewHolder progress = showCloudProgressDialog("Restoring Cloud Data 📥", "Connecting to EduTrace Server...");
         binding.btnBackupNow.setEnabled(false);
         binding.btnRestoreCloud.setEnabled(false);
 

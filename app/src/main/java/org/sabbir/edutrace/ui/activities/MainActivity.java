@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import com.google.android.material.textfield.TextInputEditText;
+import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.models.Degree;
 import org.sabbir.edutrace.databinding.ActivityMainBinding;
 import org.sabbir.edutrace.ui.adapters.DegreeAdapter;
@@ -78,6 +79,9 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
 
         binding.fabStart.setText("Add Degree");
         binding.fabStart.setOnClickListener(v -> showAddDegreeDialog());
+
+        binding.btnBannerLogin.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, AuthActivity.class)));
+        binding.cardCloudPrompt.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, AuthActivity.class)));
 
         startAppUsageService();
         scheduleStudyReminder();
@@ -417,7 +421,14 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     protected void onResume() {
         super.onResume();
         refreshStats();
+        updateCloudSyncBanner();
         updateHandler.postDelayed(updateRunnable, 0);
+    }
+
+    private void updateCloudSyncBanner() {
+        if (binding.cardCloudPrompt != null) {
+            binding.cardCloudPrompt.setVisibility(CloudDbManager.isLoggedIn(this) ? View.GONE : View.VISIBLE);
+        }
     }
 
     @Override

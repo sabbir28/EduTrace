@@ -54,7 +54,20 @@ public class StudyRepository {
     public void insertSession(StudySession session) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertSession(session);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            if (mContext != null) {
+                org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+                try {
+                    if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(mContext)) {
+                        boolean autoCloud = mContext.getSharedPreferences("Settings", Context.MODE_PRIVATE)
+                                .getBoolean("cloud_auto_backup_enabled", true);
+                        if (autoCloud) {
+                            org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(mContext);
+                        }
+                    }
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }
         });
     }
 
