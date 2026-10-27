@@ -184,6 +184,7 @@ public class TimerActivity extends AppCompatActivity {
         } else {
             startTime = System.currentTimeMillis();
             sessionManager.startSession(subjectId, subjectName, startTime);
+            org.sabbir.edutrace.data.cloud.CloudDbManager.startLiveServerSession(this, subjectId, subjectName);
         }
 
         timerHandler.postDelayed(timerRunnable, 0);
@@ -361,19 +362,7 @@ public class TimerActivity extends AppCompatActivity {
         long endTime = System.currentTimeMillis();
         StudySession session = new StudySession(subjectId, startTime, endTime, totalBreakTime, distractionCount, "");
         new StudyRepository(getApplication()).insertSession(session);
-        
-        // Auto-backup to cloud if user is logged in
-        try {
-            if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(this)) {
-                boolean autoCloudBackup = getSharedPreferences("Settings", MODE_PRIVATE)
-                        .getBoolean("cloud_auto_backup_enabled", true);
-                if (autoCloudBackup) {
-                    org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(getApplicationContext());
-                }
-            }
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
+        org.sabbir.edutrace.data.cloud.CloudDbManager.stopLiveServerSession(this, "Completed study session for " + subjectName);
 
         sessionManager.clearSession();
 

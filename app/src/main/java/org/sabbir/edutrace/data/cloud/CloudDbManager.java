@@ -176,6 +176,151 @@ public class CloudDbManager {
                 .apply();
     }
 
+    /**
+     * Completely automatic startup sync: pulls down user's data if local DB is empty,
+     * or backs up any new offline study activity without requiring manual button clicks.
+     */
+    public static void autoSyncOnStartup(Context context) {
+        if (!isLoggedIn(context)) return;
+        cloudExecutor.execute(() -> {
+            try {
+                StudyDatabase localDb = StudyDatabase.getDatabase(context);
+                List<Degree> degrees = localDb.studyDao().getDegreesListSync();
+                if (degrees == null || degrees.isEmpty()) {
+                    Log.d(TAG, "Local database empty on start -> Auto-restoring from EduTrace Cloud...");
+                    restoreData(context);
+                } else {
+                    Log.d(TAG, "Local database active on start -> Auto-syncing to EduTrace Cloud...");
+                    backupData(context);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Auto-sync on startup error: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Start live session tracking on server when a user opens and studies a subject.
+     */
+    public static void startLiveServerSession(Context context, int localSubjectId, String subjectName) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse subRes = sendApiRequest(context, "/subjects", "GET", null, token);
+                int serverSubId = -1;
+                if (subRes.isSuccess() && subRes.json != null) {
+                    JSONArray items = subRes.json.optJSONArray("items");
+                    if (items != null) {
+                        for (int i = 0; i < items.length(); i++) {
+                            JSONObject s = items.getJSONObject(i);
+                            if (subjectName != null && subjectName.equalsIgnoreCase(s.optString("name", ""))) {
+                                serverSubId = s.optInt("id", -1);
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (serverSubId != -1) {
+                    JSONObject payload = new JSONObject();
+                    payload.put("subject_id", serverSubId);
+                    payload.put("title", "Study: " + subjectName);
+                    ApiResponse startRes = sendApiRequest(context, "/sessions/start", "POST", payload, token);
+                    if (startRes.isSuccess() && startRes.json != null) {
+                        JSONObject sess = startRes.json.optJSONObject("session");
+                        if (sess != null) {
+                            int serverSessId = sess.optInt("id", -1);
+                            if (serverSessId != -1) {
+                                context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putInt("cloud_active_server_session_id", serverSessId)
+                                        .apply();
+                                Log.d(TAG, "Live server study session started: #" + serverSessId);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to start live server session: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Stop live study session on server and calculate total duration on completion.
+     */
+    public static void stopLiveServerSession(Context context, String notes) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .getInt("cloud_active_server_session_id", -1);
+        if (serverSessId == -1) return;
+
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("status", "completed");
+                payload.put("notes", notes != null ? notes : "");
+                sendApiRequest(context, "/sessions/" + serverSessId + "/stop", "POST", payload, token);
+                context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                        .edit()
+                        .remove("cloud_active_server_session_id")
+                        .apply();
+                Log.d(TAG, "Live server study session completed: #" + serverSessId);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to stop live server session: " + e.getMessage());
+            }
+        });
+    }
+
+    public interface SubjectStatsCallback {
+        void onStats(long totalSeconds, double totalHours, int sessionCount);
+        void onError(String message);
+    }
+
+    /**
+     * Query server-side calculated total values for a specific subject.
+     */
+    public static void fetchSubjectStats(Context context, String subjectName, SubjectStatsCallback callback) {
+        if (!isLoggedIn(context) || callback == null) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse subRes = sendApiRequest(context, "/subjects", "GET", null, token);
+                if (subRes.isSuccess() && subRes.json != null) {
+                    JSONArray items = subRes.json.optJSONArray("items");
+                    int serverSubId = -1;
+                    if (items != null) {
+                        for (int i = 0; i < items.length(); i++) {
+                            JSONObject s = items.getJSONObject(i);
+                            if (subjectName != null && subjectName.equalsIgnoreCase(s.optString("name", ""))) {
+                                serverSubId = s.optInt("id", -1);
+                                break;
+                            }
+                        }
+                    }
+                    if (serverSubId != -1) {
+                        ApiResponse statsRes = sendApiRequest(context, "/subjects/" + serverSubId + "/stats", "GET", null, token);
+                        if (statsRes.isSuccess() && statsRes.json != null) {
+                            JSONObject stats = statsRes.json.optJSONObject("stats");
+                            if (stats != null) {
+                                long secs = stats.optLong("total_seconds", 0);
+                                double hours = stats.optDouble("total_hours", 0.0);
+                                int count = stats.optInt("completed_sessions", 0);
+                                mainHandler.post(() -> callback.onStats(secs, hours, count));
+                                return;
+                            }
+                        }
+                    }
+                }
+                mainHandler.post(() -> callback.onError("Subject stats not found"));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
     // ==========================================
     // HTTP API Transport Implementation
     // ==========================================

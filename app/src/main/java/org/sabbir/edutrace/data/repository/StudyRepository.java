@@ -37,65 +37,65 @@ public class StudyRepository {
         return mAllSessions;
     }
 
+    private void triggerAutoCloudSync() {
+        if (mContext != null) {
+            org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            try {
+                if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(mContext)) {
+                    org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(mContext);
+                }
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
+    }
+
     public void insertDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertDegree(degree);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 
     public void insertSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertSubject(subject);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 
     public void insertSession(StudySession session) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.insertSession(session);
-            if (mContext != null) {
-                org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
-                try {
-                    if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(mContext)) {
-                        boolean autoCloud = mContext.getSharedPreferences("Settings", Context.MODE_PRIVATE)
-                                .getBoolean("cloud_auto_backup_enabled", true);
-                        if (autoCloud) {
-                            org.sabbir.edutrace.data.cloud.CloudDbManager.backupData(mContext);
-                        }
-                    }
-                } catch (Throwable t) {
-                    t.printStackTrace();
-                }
-            }
+            triggerAutoCloudSync();
         });
     }
 
     public void updateDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.updateDegree(degree);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 
     public void deleteDegree(Degree degree) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.deleteDegree(degree);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 
     public void updateSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.updateSubject(subject);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 
     public void deleteSubject(Subject subject) {
         StudyDatabase.databaseWriteExecutor.execute(() -> {
             mStudyDao.deleteSubject(subject);
-            if (mContext != null) org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            triggerAutoCloudSync();
         });
     }
 

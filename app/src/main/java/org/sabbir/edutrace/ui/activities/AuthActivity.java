@@ -61,7 +61,21 @@ public class AuthActivity extends AppCompatActivity {
 
     private void onAuthSuccess(CloudUser user) {
         setLoading(false);
-        Toast.makeText(AuthActivity.this, "Welcome, " + user.getDisplayName() + "! ☁️", Toast.LENGTH_SHORT).show();
+        Toast.makeText(AuthActivity.this, "Welcome, " + user.getDisplayName() + "! Syncing cloud data... ☁️", Toast.LENGTH_SHORT).show();
+        CloudDbManager.restoreData(this, new CloudDbManager.SyncCallback() {
+            @Override
+            public void onSuccess(String message) {
+                proceedAfterAuth();
+            }
+
+            @Override
+            public void onError(String message) {
+                proceedAfterAuth();
+            }
+        });
+    }
+
+    private void proceedAfterAuth() {
         if (isFromStart) {
             Intent intent = new Intent(AuthActivity.this, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);

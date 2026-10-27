@@ -422,6 +422,7 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         super.onResume();
         refreshStats();
         updateCloudSyncBanner();
+        CloudDbManager.autoSyncOnStartup(this);
         updateHandler.postDelayed(updateRunnable, 0);
     }
 
