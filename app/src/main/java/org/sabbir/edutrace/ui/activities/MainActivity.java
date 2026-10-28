@@ -152,16 +152,26 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     }
 
     private void checkUsagePermissions() {
-        if (!android.provider.Settings.canDrawOverlays(this)) {
+        android.content.SharedPreferences prefs = getSharedPreferences("Settings", MODE_PRIVATE);
+        boolean overlayPromptDismissed = prefs.getBoolean("overlay_prompt_dismissed", false);
+
+        // Only ask for overlay permission if the device actually supports it and isn't Android Go
+        if (isOverlayPermissionSupported() && !overlayPromptDismissed && !android.provider.Settings.canDrawOverlays(this)) {
             new AlertDialog.Builder(this)
                 .setTitle("Overlay Permission Required")
-                .setMessage("To block apps after 5 hours of use, EduTrace needs to draw over other apps. Please grant this permission.")
+                .setMessage("To block apps after 5 hours of use, EduTrace can show a full-screen block overlay. Please grant this permission.")
                 .setPositiveButton("Grant", (dialog, which) -> {
-                    Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:" + getPackageName()));
-                    startActivity(intent);
+                    try {
+                        Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                android.net.Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 })
-                .setNegativeButton("Later", null)
+                .setNegativeButton("Later", (dialog, which) -> {
+                    prefs.edit().putBoolean("overlay_prompt_dismissed", true).apply();
+                })
                 .show();
         }
         
@@ -172,10 +182,32 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
                 .setTitle("Usage Stats Permission Required")
                 .setMessage("To track app usage, EduTrace needs access to usage statistics. Please enable it in Settings.")
                 .setPositiveButton("Grant", (dialog, which) -> {
-                    startActivity(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS));
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 })
                 .setNegativeButton("Later", null)
                 .show();
+        }
+    }
+
+    private boolean isOverlayPermissionSupported() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+            return false;
+        }
+        // Detect Android Go edition / low RAM devices where SYSTEM_ALERT_WINDOW is disabled by OS
+        android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (am != null && am.isLowRamDevice()) {
+            return false;
+        }
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:" + getPackageName()));
+            return intent.resolveActivity(getPackageManager()) != null;
+        } catch (Exception e) {
+            return false;
         }
     }
 

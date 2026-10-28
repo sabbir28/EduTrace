@@ -28,6 +28,7 @@ public class CallReceiver extends BroadcastReceiver {
                         if (incomingNumber == null) incomingNumber = "Unknown Number";
                         
                         Intent broadcastIntent = new Intent(ACTION_INCOMING_CALL);
+                        broadcastIntent.setPackage(context.getPackageName());
                         broadcastIntent.putExtra("INCOMING_NUMBER", incomingNumber);
                         context.sendBroadcast(broadcastIntent);
                     }
@@ -35,6 +36,7 @@ public class CallReceiver extends BroadcastReceiver {
                     if (isRinging) {
                         isRinging = false;
                         Intent broadcastIntent = new Intent(ACTION_CALL_ENDED);
+                        broadcastIntent.setPackage(context.getPackageName());
                         context.sendBroadcast(broadcastIntent);
                     }
                 }

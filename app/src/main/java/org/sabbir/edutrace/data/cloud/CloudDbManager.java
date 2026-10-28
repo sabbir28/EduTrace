@@ -403,8 +403,8 @@ public class CloudDbManager {
             URL url = new URL(fullUrl);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod(method);
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(12000);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(25000);
             conn.setDoInput(true);
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

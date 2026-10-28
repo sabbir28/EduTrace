@@ -33,6 +33,8 @@ public class AppBlockService extends Service {
     private Handler checkHandler = new Handler();
     private long checkInterval = 5000; // Default 5 seconds
     private static final long FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+    private long lastNudgeTime = 0;
+    private String lastNudgedApp = null;
 
     private Runnable checkRunnable = new Runnable() {
         @Override
@@ -73,7 +75,7 @@ public class AppBlockService extends Service {
         if (!hasUsageStatsPermission()) return;
 
         String currentApp = getForegroundApp();
-        if (currentApp == null || getPackageName().equals(currentApp)) {
+        if (currentApp == null || getPackageName().equals(currentApp) || isHomeScreen(currentApp)) {
             removeOverlay();
             return;
         }
@@ -83,6 +85,109 @@ public class AppBlockService extends Service {
             showOverlay(currentApp);
         } else {
             removeOverlay();
+        }
+    }
+
+    private boolean isHomeScreen(String packageName) {
+        if (packageName == null) return false;
+        try {
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            android.content.pm.ResolveInfo resolveInfo = getPackageManager().resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY);
+            if (resolveInfo != null && resolveInfo.activityInfo != null) {
+                return packageName.equals(resolveInfo.activityInfo.packageName);
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private boolean canDrawOverlays() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                return Settings.canDrawOverlays(this);
+            } catch (Exception e) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String getApplicationLabel(String packageName) {
+        try {
+            android.content.pm.PackageManager pm = getPackageManager();
+            android.content.pm.ApplicationInfo ai = pm.getApplicationInfo(packageName, 0);
+            CharSequence label = pm.getApplicationLabel(ai);
+            if (label != null) return label.toString();
+        } catch (Exception ignored) {}
+        return packageName;
+    }
+
+    private void showOverlay(String packageName) {
+        String appName = getApplicationLabel(packageName);
+
+        // Path 1: Standard devices with overlay permission granted
+        if (canDrawOverlays()) {
+            if (overlayView != null) return;
+            try {
+                WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ?
+                                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY :
+                                WindowManager.LayoutParams.TYPE_PHONE,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                        PixelFormat.TRANSLUCENT);
+
+                params.gravity = Gravity.CENTER;
+
+                LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
+                overlayView = inflater.inflate(org.sabbir.edutrace.R.layout.overlay_blocked, null);
+                
+                TextView tvMessage = overlayView.findViewById(R.id.tvBlockedMessage);
+                tvMessage.setText(appName + " has been used for more than 5 hours today. Please focus on your studies!");
+
+                Button btnClose = overlayView.findViewById(R.id.btnCloseOverlay);
+                btnClose.setOnClickListener(v -> {
+                    Intent intent = new Intent(Intent.ACTION_MAIN);
+                    intent.addCategory(Intent.CATEGORY_HOME);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(intent);
+                });
+
+                windowManager.addView(overlayView, params);
+                return;
+            } catch (Exception e) {
+                // If adding overlay fails (e.g. system restricted), continue to Path 2
+                e.printStackTrace();
+            }
+        }
+
+        // Path 2: Android Go / Low RAM / Permission-disabled devices (Messenger-style fallback)
+        // Uses high-priority heads-up notification + redirection to Home / Focus mode
+        long now = System.currentTimeMillis();
+        if (now - lastNudgeTime > 20000 || !packageName.equals(lastNudgedApp)) {
+            lastNudgeTime = now;
+            lastNudgedApp = packageName;
+
+            // 1. Show high-priority heads-up alert notification
+            NotificationHelper.showAppLimitAlert(this, appName, packageName);
+
+            // 2. Redirect the user away from the distracting app to Home
+            try {
+                Intent homeIntent = new Intent(Intent.ACTION_MAIN);
+                homeIntent.addCategory(Intent.CATEGORY_HOME);
+                homeIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(homeIntent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            // 3. Show Toast to clearly explain why the app was closed
+            new Handler(android.os.Looper.getMainLooper()).post(() -> {
+                android.widget.Toast.makeText(this,
+                        appName + " exceeded the 5-hour daily limit. Focus time!",
+                        android.widget.Toast.LENGTH_LONG).show();
+            });
         }
     }
 
@@ -135,37 +240,6 @@ public class AppBlockService extends Service {
         return 0;
     }
 
-    private void showOverlay(String packageName) {
-        if (overlayView != null) return;
-        if (!Settings.canDrawOverlays(this)) return;
-
-        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ?
-                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY :
-                        WindowManager.LayoutParams.TYPE_PHONE,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT);
-
-        params.gravity = Gravity.CENTER;
-
-        LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
-        overlayView = inflater.inflate(org.sabbir.edutrace.R.layout.overlay_blocked, null);
-        
-        TextView tvMessage = overlayView.findViewById(R.id.tvBlockedMessage);
-        tvMessage.setText(packageName + " has been used for more than 5 hours today. Please focus on your studies!");
-
-        Button btnClose = overlayView.findViewById(R.id.btnCloseOverlay);
-        btnClose.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_MAIN);
-            intent.addCategory(Intent.CATEGORY_HOME);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-        });
-
-        windowManager.addView(overlayView, params);
-    }
 
     private void removeOverlay() {
         if (overlayView != null) {
