@@ -290,9 +290,63 @@ public class CloudDbManager {
     }
 
     /**
+     * Send live tick/heartbeat for the active session to EduTrace Server.
+     * Prevents offline duration inflation (e.g. mobile data turned off) and maintains live sync.
+     */
+    public static void sendLiveSessionHeartbeat(Context context, long elapsedMillis, boolean isPaused, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .getInt("cloud_active_server_session_id", -1);
+
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (serverSessId != -1) {
+                    payload.put("session_id", serverSessId);
+                }
+                payload.put("elapsed_seconds", Math.max(0, elapsedMillis / 1000));
+                payload.put("is_paused", isPaused);
+
+                String endpoint = (serverSessId != -1) ? ("/sessions/" + serverSessId + "/heartbeat") : "/sessions/heartbeat";
+                ApiResponse res = sendApiRequest(context, endpoint, "POST", payload, token);
+                if (res.isSuccess()) {
+                    if (res.json != null) {
+                        JSONObject sessObj = res.json.optJSONObject("session");
+                        if (sessObj != null) {
+                            int returnedId = sessObj.optInt("id", -1);
+                            if (returnedId != -1) {
+                                context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putInt("cloud_active_server_session_id", returnedId)
+                                        .apply();
+                            }
+                        }
+                    }
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Heartbeat synced"));
+                } else if (res.statusCode == 404 || res.statusCode == 409) {
+                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                            .edit()
+                            .remove("cloud_active_server_session_id")
+                            .apply();
+                    if (callback != null) mainHandler.post(() -> callback.onError("Session expired on server"));
+                }
+            } catch (Exception e) {
+                // Heartbeat offline - mobile data may be off
+                Log.d(TAG, "Live tick heartbeat offline: " + e.getMessage());
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void sendLiveSessionHeartbeat(Context context, long elapsedMillis, boolean isPaused) {
+        sendLiveSessionHeartbeat(context, elapsedMillis, isPaused, null);
+    }
+
+    /**
      * Stop live study session on server and calculate total duration on completion.
      */
-    public static void stopLiveServerSession(Context context, String notes) {
+    public static void stopLiveServerSession(Context context, long elapsedMillis, String notes) {
         if (!isLoggedIn(context)) return;
         final String token = getAccessToken(context);
         final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
@@ -304,6 +358,9 @@ public class CloudDbManager {
                 JSONObject payload = new JSONObject();
                 payload.put("status", "completed");
                 payload.put("notes", notes != null ? notes : "");
+                if (elapsedMillis > 0) {
+                    payload.put("duration_seconds", Math.max(0, elapsedMillis / 1000));
+                }
                 sendApiRequest(context, "/sessions/" + serverSessId + "/stop", "POST", payload, token);
                 context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
                         .edit()
@@ -314,6 +371,10 @@ public class CloudDbManager {
                 Log.e(TAG, "Failed to stop live server session: " + e.getMessage());
             }
         });
+    }
+
+    public static void stopLiveServerSession(Context context, String notes) {
+        stopLiveServerSession(context, 0, notes);
     }
 
     public interface SubjectStatsCallback {

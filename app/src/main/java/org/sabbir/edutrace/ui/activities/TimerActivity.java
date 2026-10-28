@@ -213,6 +213,7 @@ public class TimerActivity extends AppCompatActivity {
                 binding.tvStatus.setTextColor(getResources().getColor(R.color.status_break));
                 binding.tvStatus.animate().alpha(0.8f).scaleX(0.9f).scaleY(0.9f).setDuration(300);
                 sessionManager.setPaused(true, breakStartTime, totalBreakTime);
+                org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(this, sessionManager.getActiveSessionElapsed(), true);
             } else {
                 isPaused = false;
                 totalBreakTime += (System.currentTimeMillis() - breakStartTime);
@@ -222,6 +223,7 @@ public class TimerActivity extends AppCompatActivity {
                 binding.btnBreak.setText("BREAK");
                 binding.tvStatus.animate().alpha(1.0f).scaleX(1.0f).scaleY(1.0f).setDuration(300);
                 sessionManager.setPaused(false, 0, totalBreakTime);
+                org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(this, sessionManager.getActiveSessionElapsed(), false);
             }
         });
 
@@ -360,9 +362,10 @@ public class TimerActivity extends AppCompatActivity {
         disableDND();
         NotificationHelper.clearFocusNotification(this);
         long endTime = System.currentTimeMillis();
+        long sessionMillis = sessionManager != null ? sessionManager.getActiveSessionElapsed() : Math.max(0, endTime - startTime - totalBreakTime);
         StudySession session = new StudySession(subjectId, startTime, endTime, totalBreakTime, distractionCount, "");
         new StudyRepository(getApplication()).insertSession(session);
-        org.sabbir.edutrace.data.cloud.CloudDbManager.stopLiveServerSession(this, "Completed study session for " + subjectName);
+        org.sabbir.edutrace.data.cloud.CloudDbManager.stopLiveServerSession(this, sessionMillis, "Completed study session for " + subjectName);
 
         sessionManager.clearSession();
 

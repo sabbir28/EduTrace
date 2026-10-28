@@ -26,7 +26,9 @@ public class StudyTimerService extends Service {
     private NotificationManager notificationManager;
     private String subjectName;
     private long lastScreenOffTime = 0;
+    private long lastHeartbeatTime = 0;
     private static final long INACTIVITY_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
+    private static final long HEARTBEAT_INTERVAL = 60 * 1000; // 60 seconds live tick
 
     private Runnable wardenRunnable = new Runnable() {
         @Override
@@ -58,14 +60,25 @@ public class StudyTimerService extends Service {
     private Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            if (sessionManager != null && sessionManager.isActive() && !sessionManager.isPaused()) {
+            if (sessionManager != null && sessionManager.isActive()) {
                 long elapsed = sessionManager.getActiveSessionElapsed();
-                int seconds = (int) (elapsed / 1000);
-                int minutes = seconds / 60;
-                int hours = minutes / 60;
-                
-                String timeText = String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60);
-                updateNotification("Focusing on " + subjectName, "Elapsed Time: " + timeText);
+                boolean isPaused = sessionManager.isPaused();
+
+                if (!isPaused) {
+                    int seconds = (int) (elapsed / 1000);
+                    int minutes = seconds / 60;
+                    int hours = minutes / 60;
+                    
+                    String timeText = String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60);
+                    updateNotification("Focusing on " + subjectName, "Elapsed Time: " + timeText);
+                }
+
+                // Live heartbeat tick mechanism: sends periodic heartbeat every 60s
+                long now = System.currentTimeMillis();
+                if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL) {
+                    lastHeartbeatTime = now;
+                    org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(getApplicationContext(), elapsed, isPaused);
+                }
             }
             timerHandler.postDelayed(this, 1000);
         }
@@ -119,6 +132,11 @@ public class StudyTimerService extends Service {
         isWardenRunning = true;
         wardenHandler.post(wardenRunnable);
         timerHandler.post(timerRunnable);
+
+        lastHeartbeatTime = System.currentTimeMillis();
+        if (sessionManager != null && sessionManager.isActive()) {
+            org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(getApplicationContext(), sessionManager.getActiveSessionElapsed(), sessionManager.isPaused());
+        }
 
         return START_STICKY;
     }
