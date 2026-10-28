@@ -1,8 +1,10 @@
 package org.sabbir.edutrace.ui.activities;
 import org.sabbir.edutrace.R;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -40,6 +42,13 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
 
     private java.util.List<org.sabbir.edutrace.data.models.Subject> lastSubjects = new java.util.ArrayList<>();
     private java.util.List<org.sabbir.edutrace.data.models.StudySession> lastSessions = new java.util.ArrayList<>();
+
+    private final BroadcastReceiver notificationUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            refreshNotificationBadge();
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -92,6 +101,9 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         // Automatically safeguard user data in isolated safe vault without prompting
         org.sabbir.edutrace.utils.LocalVaultManager.autoRecoverIfEmpty(this);
         org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(this);
+
+        // Load latest cloud data in background on app startup
+        CloudDbManager.autoSyncOnStartup(this);
     }
 
     private void checkForAppUpdates() {
@@ -557,6 +569,14 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     @Override
     protected void onResume() {
         super.onResume();
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(notificationUpdateReceiver, new IntentFilter(CloudDbManager.ACTION_NOTIFICATIONS_UPDATED), Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(notificationUpdateReceiver, new IntentFilter(CloudDbManager.ACTION_NOTIFICATIONS_UPDATED));
+            }
+        } catch (Throwable ignored) {}
+
         refreshStats();
         updateCloudSyncBanner();
         CloudDbManager.autoSyncOnStartup(this);
@@ -575,6 +595,9 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     @Override
     protected void onPause() {
         super.onPause();
+        try {
+            unregisterReceiver(notificationUpdateReceiver);
+        } catch (Throwable ignored) {}
         updateHandler.removeCallbacks(updateRunnable);
     }
 }

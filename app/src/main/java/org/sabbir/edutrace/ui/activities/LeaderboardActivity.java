@@ -225,9 +225,11 @@ public class LeaderboardActivity extends AppCompatActivity {
             @Override
             public void onError(String message) {
                 progressBar.setVisibility(View.GONE);
-                tvEmpty.setText("Unable to load leaderboard: " + message);
-                tvEmpty.setVisibility(View.VISIBLE);
-                Toast.makeText(LeaderboardActivity.this, message, Toast.LENGTH_SHORT).show();
+                if (adapter.getItemCount() == 0) {
+                    tvEmpty.setText("Unable to load leaderboard: " + message);
+                    tvEmpty.setVisibility(View.VISIBLE);
+                    Toast.makeText(LeaderboardActivity.this, message, Toast.LENGTH_SHORT).show();
+                }
             }
         });
     }

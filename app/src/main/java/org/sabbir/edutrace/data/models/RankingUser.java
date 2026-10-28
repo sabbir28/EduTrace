@@ -39,20 +39,29 @@ public class RankingUser {
         int rank = obj.optInt("rank", 0);
         int userId = obj.optInt("user_id", -1);
 
-        String rawName = obj.optString("name", "").trim();
-        String rawDisplayName = obj.optString("display_name", "").trim();
-        String rawUsername = obj.optString("username", "").trim();
-        String rawUserLabel = obj.optString("user_label", "").trim();
+        String rawDisplayName = getCleanString(obj, "display_name");
+        String rawName = getCleanString(obj, "name");
+        String rawFirstName = getCleanString(obj, "first_name");
+        String rawLastName = getCleanString(obj, "last_name");
+        String fullName = (rawFirstName + " " + rawLastName).trim();
+        String rawUsername = getCleanString(obj, "username");
+        String rawUserLabel = getCleanString(obj, "user_label");
 
         String displayName;
         if (!rawDisplayName.isEmpty()) {
             displayName = rawDisplayName;
         } else if (!rawName.isEmpty()) {
             displayName = rawName;
+        } else if (!fullName.isEmpty()) {
+            displayName = fullName;
+        } else if (!rawFirstName.isEmpty()) {
+            displayName = rawFirstName;
         } else if (!rawUsername.isEmpty()) {
             displayName = rawUsername;
         } else if (!rawUserLabel.isEmpty()) {
             displayName = rawUserLabel;
+        } else if (userId > 0) {
+            displayName = "Scholar #" + userId;
         } else {
             displayName = "Scholar";
         }
@@ -60,12 +69,14 @@ public class RankingUser {
         String username;
         if (!rawUsername.isEmpty()) {
             username = rawUsername;
-        } else if (!rawName.isEmpty()) {
-            username = rawName;
-        } else if (!rawDisplayName.isEmpty()) {
-            username = rawDisplayName;
         } else if (!rawUserLabel.isEmpty()) {
             username = rawUserLabel;
+        } else if (!rawDisplayName.isEmpty()) {
+            username = rawDisplayName;
+        } else if (!rawName.isEmpty()) {
+            username = rawName;
+        } else if (!fullName.isEmpty()) {
+            username = fullName;
         } else {
             username = displayName;
         }
@@ -85,6 +96,13 @@ public class RankingUser {
 
         return new RankingUser(rank, userId, username, displayName, avatarUrl, tier,
                 totalSec, totalHours, formatted, streak, isCurrent);
+    }
+
+    private static String getCleanString(JSONObject obj, String key) {
+        if (obj == null || !obj.has(key) || obj.isNull(key)) return "";
+        String s = obj.optString(key, "").trim();
+        if ("null".equalsIgnoreCase(s) || "none".equalsIgnoreCase(s)) return "";
+        return s;
     }
 
     public static String formatSeconds(long seconds) {

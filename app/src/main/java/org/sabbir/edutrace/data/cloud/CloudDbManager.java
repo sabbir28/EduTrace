@@ -1,6 +1,7 @@
 package org.sabbir.edutrace.data.cloud;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,6 +20,7 @@ import org.sabbir.edutrace.data.models.Subject;
 import org.sabbir.edutrace.data.models.TimelineDayData;
 import org.sabbir.edutrace.data.models.TimelineSegment;
 import org.sabbir.edutrace.data.models.TimerMatchStatus;
+import org.sabbir.edutrace.utils.NotificationCacheManager;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -35,6 +37,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Manages modern RESTful cloud persistence and synchronization with the EduTrace Server.
@@ -58,6 +61,12 @@ public class CloudDbManager {
     public static final String DEFAULT_EMULATOR_URL = "http://10.0.2.2:5000/api";
     public static final String DEFAULT_WIFI_URL = "http://192.168.10.120:5000/api";
     public static final String DEFAULT_LOCAL_URL = "http://127.0.0.1:5000/api";
+
+    public static final String ACTION_NOTIFICATIONS_UPDATED = "org.sabbir.edutrace.ACTION_NOTIFICATIONS_UPDATED";
+    private static final String PREF_RANKING_CACHE = "EduTrace_Ranking_Cache";
+    private static final long AUTO_SYNC_DEBOUNCE_MS = 15_000L;
+    private static volatile long sLastAutoSyncTimestamp = 0;
+    private static final AtomicBoolean sIsAutoSyncing = new AtomicBoolean(false);
 
     private static final ExecutorService cloudExecutor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -219,26 +228,142 @@ public class CloudDbManager {
     }
 
     /**
-     * Completely automatic startup sync: pulls down user's data if local DB is empty,
-     * or backs up any new offline study activity without requiring manual button clicks.
+     * Completely automatic startup sync: pulls down user's data from cloud in background,
+     * updates Room database seamlessly, and backs up any offline activity without disrupting
+     * user experience or freezing the UI.
      */
     public static void autoSyncOnStartup(Context context) {
-        if (!isLoggedIn(context)) return;
+        if (context == null || !isLoggedIn(context)) return;
+
+        long now = System.currentTimeMillis();
+        if (now - sLastAutoSyncTimestamp < AUTO_SYNC_DEBOUNCE_MS) {
+            return;
+        }
+        if (!sIsAutoSyncing.compareAndSet(false, true)) {
+            return;
+        }
+
+        final Context appContext = context.getApplicationContext();
         cloudExecutor.execute(() -> {
             try {
-                StudyDatabase localDb = StudyDatabase.getDatabase(context);
-                List<Degree> degrees = localDb.studyDao().getDegreesListSync();
-                if (degrees == null || degrees.isEmpty()) {
-                    Log.d(TAG, "Local database empty on start -> Auto-restoring from EduTrace Cloud...");
-                    restoreData(context);
-                } else {
-                    Log.d(TAG, "Local database active on start -> Auto-syncing to EduTrace Cloud...");
-                    backupData(context);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Auto-sync on startup error: " + e.getMessage());
+                Log.d(TAG, "Starting automatic background data load on app open...");
+
+                // 1. Pull latest academic data from cloud (/sync/restore) & update Room DB
+                doRestoreData(appContext, null);
+
+                // 2. Push any new offline local academic records to cloud (/sync/backup)
+                doBackupData(appContext, null);
+
+                // 3. Refresh user profile session (/auth/me)
+                doSyncUserProfile(appContext);
+
+                // 4. Prefetch notifications cache & unread count (/notifications)
+                doPrefetchNotifications(appContext);
+
+                // 5. Prefetch scholar rankings (/rankings/me & /rankings)
+                doPrefetchRankings(appContext);
+
+                // 6. Record app open telemetry
+                recordDeviceActivity(appContext, "app_open");
+
+                Log.d(TAG, "Automatic background data load on app open completed.");
+            } catch (Throwable t) {
+                Log.w(TAG, "Automatic background load completed with notice: " + t.getMessage());
+            } finally {
+                sLastAutoSyncTimestamp = System.currentTimeMillis();
+                sIsAutoSyncing.set(false);
             }
         });
+    }
+
+    private static void doSyncUserProfile(Context context) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        if (token.isEmpty()) return;
+        try {
+            ApiResponse res = sendApiRequest(context, "/auth/me", "GET", null, token);
+            if (res.isSuccess() && res.json != null) {
+                JSONObject userObj = res.json.optJSONObject("user");
+                if (userObj != null) {
+                    SharedPreferences.Editor edit = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE).edit();
+                    if (userObj.has("id")) edit.putInt(KEY_USER_ID, userObj.getInt("id"));
+                    if (userObj.has("username")) edit.putString(KEY_USERNAME, userObj.getString("username"));
+                    if (userObj.has("email")) edit.putString(KEY_EMAIL, userObj.getString("email"));
+                    String displayName = userObj.optString("first_name", userObj.optString("display_name", ""));
+                    if (!displayName.isEmpty()) edit.putString(KEY_DISPLAY_NAME, displayName);
+                    edit.apply();
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Profile sync notice: " + t.getMessage());
+        }
+    }
+
+    private static void doPrefetchNotifications(Context context) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        if (token.isEmpty()) return;
+        try {
+            ApiResponse res = sendApiRequest(context, "/notifications?unread_only=false&limit=50", "GET", null, token);
+            if (res.isSuccess() && res.json != null) {
+                List<CloudNotification> list = new ArrayList<>();
+                JSONArray arr = res.json.optJSONArray("notifications");
+                if (arr != null) {
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject item = arr.getJSONObject(i);
+                        CloudNotification n = CloudNotification.fromJson(item);
+                        if (n != null) list.add(n);
+                    }
+                }
+                int unreadCount = res.json.optInt("unread_count", 0);
+                NotificationCacheManager.saveNotifications(context, list, unreadCount);
+                try {
+                    Intent intent = new Intent(ACTION_NOTIFICATIONS_UPDATED);
+                    intent.putExtra("unread_count", unreadCount);
+                    context.sendBroadcast(intent);
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Notifications prefetch notice: " + t.getMessage());
+        }
+    }
+
+    private static void doPrefetchRankings(Context context) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        try {
+            ApiResponse resAll = sendApiRequest(context, "/rankings?timeframe=all_time", "GET", null, token);
+            if (resAll.isSuccess() && resAll.json != null && resAll.rawBody != null) {
+                saveCachedRankingJson(context, "all_time", resAll.rawBody);
+            }
+            ApiResponse resMe = sendApiRequest(context, "/rankings/me", "GET", null, token);
+            if (resMe.isSuccess() && resMe.json != null && resMe.rawBody != null) {
+                saveCachedRankingJson(context, "me", resMe.rawBody);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Rankings prefetch notice: " + t.getMessage());
+        }
+    }
+
+    public static void saveCachedRankingJson(Context context, String timeframe, String json) {
+        if (context == null || timeframe == null || json == null) return;
+        try {
+            context.getSharedPreferences(PREF_RANKING_CACHE, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("ranking_" + timeframe.toLowerCase(Locale.ROOT), json)
+                    .putLong("ranking_" + timeframe.toLowerCase(Locale.ROOT) + "_time", System.currentTimeMillis())
+                    .apply();
+        } catch (Throwable ignored) {}
+    }
+
+    public static String getCachedRankingJson(Context context, String timeframe) {
+        if (context == null || timeframe == null) return null;
+        try {
+            return context.getSharedPreferences(PREF_RANKING_CACHE, Context.MODE_PRIVATE)
+                    .getString("ranking_" + timeframe.toLowerCase(Locale.ROOT), null);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     /**
@@ -726,134 +851,152 @@ public class CloudDbManager {
             if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to backup data to EduTrace Server."));
             return;
         }
+        cloudExecutor.execute(() -> doBackupData(context, callback));
+    }
+
+    private static boolean doBackupData(Context context, SyncProgressCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to backup data to EduTrace Server."));
+            return false;
+        }
 
         final String token = getAccessToken(context);
+        try {
+            if (callback != null) mainHandler.post(() -> callback.onProgress("Collecting local study data..."));
+            StudyDatabase localDb = StudyDatabase.getDatabase(context);
+            StudyDao dao = localDb.studyDao();
 
-        cloudExecutor.execute(() -> {
-            try {
-                if (callback != null) mainHandler.post(() -> callback.onProgress("Collecting local study data..."));
-                StudyDatabase localDb = StudyDatabase.getDatabase(context);
-                StudyDao dao = localDb.studyDao();
+            List<Degree> degrees = dao.getDegreesListSync();
+            List<Subject> subjects = dao.getSubjectsListSync();
+            List<StudySession> sessions = dao.getSessionsListSync();
 
-                List<Degree> degrees = dao.getDegreesListSync();
-                List<Subject> subjects = dao.getSubjectsListSync();
-                List<StudySession> sessions = dao.getSessionsListSync();
+            JSONObject rootPayload = new JSONObject();
 
-                JSONObject rootPayload = new JSONObject();
+            // 1. Degrees
+            JSONArray degArr = new JSONArray();
+            for (Degree d : degrees) {
+                JSONObject dObj = new JSONObject();
+                dObj.put("local_id", d.id);
+                dObj.put("name", d.name);
+                dObj.put("color_hex", d.colorHex != null ? d.colorHex : "#3B82F6");
+                degArr.put(dObj);
+            }
+            rootPayload.put("degrees", degArr);
 
-                // 1. Degrees
-                JSONArray degArr = new JSONArray();
-                for (Degree d : degrees) {
-                    JSONObject dObj = new JSONObject();
-                    dObj.put("local_id", d.id);
-                    dObj.put("name", d.name);
-                    dObj.put("color_hex", d.colorHex != null ? d.colorHex : "#3B82F6");
-                    degArr.put(dObj);
+            // 2. Subjects
+            JSONArray subArr = new JSONArray();
+            for (Subject s : subjects) {
+                JSONObject sObj = new JSONObject();
+                sObj.put("local_id", s.id);
+                sObj.put("degree_local_id", s.degreeId);
+                sObj.put("name", s.name);
+                sObj.put("color_hex", s.colorHex != null ? s.colorHex : "#2563EB");
+                subArr.put(sObj);
+            }
+            rootPayload.put("subjects", subArr);
+
+            // 3. Sessions
+            JSONArray sessArr = new JSONArray();
+            for (StudySession s : sessions) {
+                JSONObject sessObj = new JSONObject();
+                sessObj.put("local_id", s.id);
+                sessObj.put("subject_local_id", s.subjectId);
+                sessObj.put("start_timestamp", s.startTimestamp);
+                sessObj.put("end_timestamp", s.endTimestamp);
+                sessObj.put("break_duration_millis", s.breakDurationMillis);
+                sessObj.put("distraction_count", s.distractionCount);
+                sessObj.put("notes", s.notes != null ? s.notes : "");
+                sessArr.put(sessObj);
+            }
+            rootPayload.put("sessions", sessArr);
+
+            if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading to EduTrace Cloud Server..."));
+
+            ApiResponse res = sendApiRequest(context, "/sync/backup", "POST", rootPayload, token);
+
+            if (res.isSuccess()) {
+                long now = System.currentTimeMillis();
+                context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                        .edit()
+                        .putLong(KEY_LAST_BACKUP, now)
+                        .apply();
+
+                org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                String successMsg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to EduTrace Server! ☁️";
+                if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
+                return true;
+            } else if (res.statusCode == 404) {
+                return doFallbackBackup(context, token, degrees, subjects, callback);
+            } else {
+                String err = res.errorMessage != null ? res.errorMessage : "Backup failed.";
+                if (callback != null) mainHandler.post(() -> callback.onError(err));
+                return false;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Backup error: " + e.getMessage());
+            if (callback != null) mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
+            return false;
+        }
+    }
+
+    private static boolean doFallbackBackup(Context context, String token, List<Degree> degrees, List<Subject> subjects, SyncProgressCallback callback) {
+        try {
+            if (callback != null) mainHandler.post(() -> callback.onProgress("Syncing records to EduTrace Server..."));
+            int syncedDegrees = 0;
+            int syncedSubjects = 0;
+
+            for (Degree d : degrees) {
+                JSONObject dPayload = new JSONObject();
+                dPayload.put("name", d.name);
+                dPayload.put("color", d.colorHex != null ? d.colorHex : "#3B82F6");
+                ApiResponse dRes = sendApiRequest(context, "/degrees", "POST", dPayload, token);
+                int serverDegreeId = -1;
+                if (dRes.isSuccess() && dRes.json != null) {
+                    JSONObject createdDegree = dRes.json.optJSONObject("degree");
+                    if (createdDegree != null) serverDegreeId = createdDegree.optInt("id", -1);
                 }
-                rootPayload.put("degrees", degArr);
-
-                // 2. Subjects
-                JSONArray subArr = new JSONArray();
-                for (Subject s : subjects) {
-                    JSONObject sObj = new JSONObject();
-                    sObj.put("local_id", s.id);
-                    sObj.put("degree_local_id", s.degreeId);
-                    sObj.put("name", s.name);
-                    sObj.put("color_hex", s.colorHex != null ? s.colorHex : "#2563EB");
-                    subArr.put(sObj);
-                }
-                rootPayload.put("subjects", subArr);
-
-                // 3. Sessions
-                JSONArray sessArr = new JSONArray();
-                for (StudySession s : sessions) {
-                    JSONObject sessObj = new JSONObject();
-                    sessObj.put("local_id", s.id);
-                    sessObj.put("subject_local_id", s.subjectId);
-                    sessObj.put("start_timestamp", s.startTimestamp);
-                    sessObj.put("end_timestamp", s.endTimestamp);
-                    sessObj.put("break_duration_millis", s.breakDurationMillis);
-                    sessObj.put("distraction_count", s.distractionCount);
-                    sessObj.put("notes", s.notes != null ? s.notes : "");
-                    sessArr.put(sessObj);
-                }
-                rootPayload.put("sessions", sessArr);
-
-                if (callback != null) mainHandler.post(() -> callback.onProgress("Uploading to EduTrace Cloud Server..."));
-
-                ApiResponse res = sendApiRequest(context, "/sync/backup", "POST", rootPayload, token);
-
-                if (res.isSuccess()) {
-                    long now = System.currentTimeMillis();
-                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
-                            .edit()
-                            .putLong(KEY_LAST_BACKUP, now)
-                            .apply();
-
-                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-
-                    String successMsg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to EduTrace Server! ☁️";
-                    if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
-                } else if (res.statusCode == 404) {
-                    // Fallback: sync directly using individual REST endpoints
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Syncing records to EduTrace Server..."));
-                    int syncedDegrees = 0;
-                    int syncedSubjects = 0;
-
-                    for (Degree d : degrees) {
-                        JSONObject dPayload = new JSONObject();
-                        dPayload.put("name", d.name);
-                        dPayload.put("color", d.colorHex != null ? d.colorHex : "#3B82F6");
-                        ApiResponse dRes = sendApiRequest(context, "/degrees", "POST", dPayload, token);
-                        int serverDegreeId = -1;
-                        if (dRes.isSuccess() && dRes.json != null) {
-                            JSONObject createdDegree = dRes.json.optJSONObject("degree");
-                            if (createdDegree != null) serverDegreeId = createdDegree.optInt("id", -1);
-                        }
-                        if (serverDegreeId != -1) {
-                            syncedDegrees++;
-                            JSONObject cPayload = new JSONObject();
-                            cPayload.put("name", "Core Studies");
-                            cPayload.put("degree_id", serverDegreeId);
-                            ApiResponse cRes = sendApiRequest(context, "/courses", "POST", cPayload, token);
-                            int serverCourseId = -1;
-                            if (cRes.isSuccess() && cRes.json != null) {
-                                JSONObject createdCourse = cRes.json.optJSONObject("course");
-                                if (createdCourse != null) serverCourseId = createdCourse.optInt("id", -1);
-                            }
-                            if (serverCourseId != -1) {
-                                for (Subject s : subjects) {
-                                    if (s.degreeId == d.id) {
-                                        JSONObject sPayload = new JSONObject();
-                                        sPayload.put("name", s.name);
-                                        sPayload.put("color", s.colorHex != null ? s.colorHex : "#2563EB");
-                                        sPayload.put("course_id", serverCourseId);
-                                        ApiResponse sRes = sendApiRequest(context, "/subjects", "POST", sPayload, token);
-                                        if (sRes.isSuccess()) syncedSubjects++;
-                                    }
-                                }
+                if (serverDegreeId != -1) {
+                    syncedDegrees++;
+                    JSONObject cPayload = new JSONObject();
+                    cPayload.put("name", "Core Studies");
+                    cPayload.put("degree_id", serverDegreeId);
+                    ApiResponse cRes = sendApiRequest(context, "/courses", "POST", cPayload, token);
+                    int serverCourseId = -1;
+                    if (cRes.isSuccess() && cRes.json != null) {
+                        JSONObject createdCourse = cRes.json.optJSONObject("course");
+                        if (createdCourse != null) serverCourseId = createdCourse.optInt("id", -1);
+                    }
+                    if (serverCourseId != -1) {
+                        for (Subject s : subjects) {
+                            if (s.degreeId == d.id) {
+                                JSONObject sPayload = new JSONObject();
+                                sPayload.put("name", s.name);
+                                sPayload.put("color", s.colorHex != null ? s.colorHex : "#2563EB");
+                                sPayload.put("course_id", serverCourseId);
+                                ApiResponse sRes = sendApiRequest(context, "/subjects", "POST", sPayload, token);
+                                if (sRes.isSuccess()) syncedSubjects++;
                             }
                         }
                     }
-
-                    long now = System.currentTimeMillis();
-                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
-                            .edit()
-                            .putLong(KEY_LAST_BACKUP, now)
-                            .apply();
-
-                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-                    String successMsg = "Successfully synced " + syncedDegrees + " degrees & " + syncedSubjects + " subjects to EduTrace Server! ☁️";
-                    if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
-                } else {
-                    String err = res.errorMessage != null ? res.errorMessage : "Backup failed.";
-                    if (callback != null) mainHandler.post(() -> callback.onError(err));
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
             }
-        });
+
+            long now = System.currentTimeMillis();
+            context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong(KEY_LAST_BACKUP, now)
+                    .apply();
+
+            org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+            String successMsg = "Successfully synced " + syncedDegrees + " degrees & " + syncedSubjects + " subjects to EduTrace Server! ☁️";
+            if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Fallback backup error: " + e.getMessage());
+            if (callback != null) mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
+            return false;
+        }
     }
 
     public static void backupData(Context context, SyncCallback callback) {
@@ -882,155 +1025,213 @@ public class CloudDbManager {
             if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from EduTrace Server."));
             return;
         }
+        cloudExecutor.execute(() -> doRestoreData(context, callback));
+    }
+
+    private static boolean doRestoreData(Context context, SyncProgressCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to restore data from EduTrace Server."));
+            return false;
+        }
 
         final String token = getAccessToken(context);
+        try {
+            if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to EduTrace REST API..."));
 
-        cloudExecutor.execute(() -> {
-            try {
-                if (callback != null) mainHandler.post(() -> callback.onProgress("Connecting to EduTrace REST API..."));
+            ApiResponse res = sendApiRequest(context, "/sync/restore", "GET", null, token);
 
-                ApiResponse res = sendApiRequest(context, "/sync/restore", "GET", null, token);
+            if (res.isSuccess() && res.json != null) {
+                StudyDatabase localDb = StudyDatabase.getDatabase(context);
+                StudyDao dao = localDb.studyDao();
 
-                if (res.isSuccess() && res.json != null) {
-                    StudyDatabase localDb = StudyDatabase.getDatabase(context);
-                    StudyDao dao = localDb.studyDao();
+                int restoredDegrees = 0;
+                int restoredSubjects = 0;
+                int restoredSessions = 0;
 
-                    int restoredDegrees = 0;
-                    int restoredSubjects = 0;
-                    int restoredSessions = 0;
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring academic degrees & subjects..."));
 
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring academic degrees & subjects..."));
-
-                    // 1. Degrees
-                    JSONArray degArr = res.json.optJSONArray("degrees");
-                    if (degArr != null) {
-                        for (int i = 0; i < degArr.length(); i++) {
+                // 1. Degrees
+                JSONArray degArr = res.json.optJSONArray("degrees");
+                if (degArr != null) {
+                    for (int i = 0; i < degArr.length(); i++) {
+                        try {
                             JSONObject d = degArr.getJSONObject(i);
-                            Degree degree = new Degree(d.getString("name"), d.optString("color_hex", "#3B82F6"));
-                            degree.id = d.getInt("local_id");
+                            int localId = d.has("local_id") ? d.getInt("local_id") : d.optInt("id", 0);
+                            String name = d.optString("name", "Degree " + localId);
+                            String color = d.optString("color_hex", d.optString("color", "#3B82F6"));
+                            Degree degree = new Degree(name, color);
+                            degree.id = localId;
                             dao.insertOrReplaceDegree(degree);
                             restoredDegrees++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error restoring degree: " + t.getMessage());
                         }
                     }
+                }
 
-                    // 2. Subjects
-                    JSONArray subArr = res.json.optJSONArray("subjects");
-                    if (subArr != null) {
-                        for (int i = 0; i < subArr.length(); i++) {
+                // 2. Subjects
+                JSONArray subArr = res.json.optJSONArray("subjects");
+                if (subArr != null) {
+                    for (int i = 0; i < subArr.length(); i++) {
+                        try {
                             JSONObject s = subArr.getJSONObject(i);
-                            Subject subject = new Subject(
-                                    s.getInt("degree_local_id"),
-                                    s.getString("name"),
-                                    s.optString("color_hex", "#2563EB")
-                            );
-                            subject.id = s.getInt("local_id");
+                            int localId = s.has("local_id") ? s.getInt("local_id") : s.optInt("id", 0);
+                            int degId = s.has("degree_local_id") ? s.getInt("degree_local_id") : s.optInt("degree_id", 1);
+                            String name = s.optString("name", "Subject " + localId);
+                            String color = s.optString("color_hex", s.optString("color", "#2563EB"));
+                            Subject subject = new Subject(degId, name, color);
+                            subject.id = localId;
                             dao.insertOrReplaceSubject(subject);
                             restoredSubjects++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error restoring subject: " + t.getMessage());
                         }
                     }
+                }
 
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
+                if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
 
-                    // 3. Sessions
-                    JSONArray sessArr = res.json.optJSONArray("sessions");
-                    if (sessArr != null) {
-                        for (int i = 0; i < sessArr.length(); i++) {
+                // 3. Sessions
+                JSONArray sessArr = res.json.optJSONArray("sessions");
+                if (sessArr != null) {
+                    for (int i = 0; i < sessArr.length(); i++) {
+                        try {
                             JSONObject sess = sessArr.getJSONObject(i);
+                            int localId = sess.has("local_id") ? sess.getInt("local_id") : sess.optInt("id", 0);
+                            int subId = sess.has("subject_local_id") ? sess.getInt("subject_local_id") : sess.optInt("subject_id", 1);
+                            long startMs = sess.optLong("start_timestamp", 0);
+                            if (startMs <= 0) {
+                                startMs = parseIsoOrEpoch(sess.optString("started_at", ""));
+                            }
+                            long endMs = sess.optLong("end_timestamp", 0);
+                            if (endMs <= 0) {
+                                endMs = parseIsoOrEpoch(sess.optString("ended_at", ""));
+                            }
+                            if (startMs <= 0) startMs = System.currentTimeMillis();
+                            if (endMs <= 0) endMs = startMs;
+
                             StudySession session = new StudySession(
-                                    sess.getInt("subject_local_id"),
-                                    sess.getLong("start_timestamp"),
-                                    sess.getLong("end_timestamp"),
+                                    subId,
+                                    startMs,
+                                    endMs,
                                     sess.optLong("break_duration_millis", 0),
                                     sess.optInt("distraction_count", 0),
                                     sess.optString("notes", "")
                             );
-                            session.id = sess.getInt("local_id");
+                            session.id = localId;
                             dao.insertOrReplaceSession(session);
                             restoredSessions++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error restoring session: " + t.getMessage());
                         }
                     }
-
-                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-
-                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees from cloud! 📥";
-                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
-                } else if (res.statusCode == 404) {
-                    // Fallback: restore from individual endpoints /degrees and /subjects
-                    if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring from EduTrace Server records..."));
-                    StudyDatabase localDb = StudyDatabase.getDatabase(context);
-                    StudyDao dao = localDb.studyDao();
-                    int restoredDegrees = 0;
-                    int restoredSubjects = 0;
-
-                    ApiResponse degListRes = sendApiRequest(context, "/degrees", "GET", null, token);
-                    if (degListRes.isSuccess() && degListRes.json != null) {
-                        JSONArray items = degListRes.json.optJSONArray("items");
-                        if (items != null) {
-                            for (int i = 0; i < items.length(); i++) {
-                                JSONObject d = items.getJSONObject(i);
-                                Degree degree = new Degree(d.getString("name"), d.optString("color", "#3B82F6"));
-                                degree.id = d.getInt("id");
-                                dao.insertOrReplaceDegree(degree);
-                                restoredDegrees++;
-                            }
-                        }
-                    }
-
-                    ApiResponse subListRes = sendApiRequest(context, "/subjects", "GET", null, token);
-                    if (subListRes.isSuccess() && subListRes.json != null) {
-                        JSONArray items = subListRes.json.optJSONArray("items");
-                        if (items != null) {
-                            for (int i = 0; i < items.length(); i++) {
-                                JSONObject s = items.getJSONObject(i);
-                                int courseId = s.optInt("course_id", 1);
-                                Subject subject = new Subject(courseId, s.getString("name"), s.optString("color", "#2563EB"));
-                                subject.id = s.getInt("id");
-                                dao.insertOrReplaceSubject(subject);
-                                restoredSubjects++;
-                            }
-                        }
-                    }
-
-                    int restoredSessions = 0;
-                    ApiResponse sessListRes = sendApiRequest(context, "/sessions", "GET", null, token);
-                    if (sessListRes.isSuccess() && sessListRes.json != null) {
-                        JSONArray items = sessListRes.json.optJSONArray("items");
-                        if (items != null) {
-                            for (int i = 0; i < items.length(); i++) {
-                                JSONObject sess = items.getJSONObject(i);
-                                int subId = sess.optInt("subject_id", 1);
-                                String startedStr = sess.optString("started_at", "");
-                                String endedStr = sess.optString("ended_at", "");
-                                int durationSec = sess.optInt("duration_seconds", 0);
-                                long startMs = parseIsoOrEpoch(startedStr);
-                                long endMs = !endedStr.isEmpty() ? parseIsoOrEpoch(endedStr) : (startMs + (durationSec * 1000L));
-                                StudySession session = new StudySession(
-                                        subId,
-                                        startMs > 0 ? startMs : System.currentTimeMillis() - (durationSec * 1000L),
-                                        endMs > 0 ? endMs : System.currentTimeMillis(),
-                                        0,
-                                        0,
-                                        sess.optString("notes", "")
-                                );
-                                session.id = sess.optInt("id", 0);
-                                dao.insertOrReplaceSession(session);
-                                restoredSessions++;
-                            }
-                        }
-                    }
-
-                    org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
-                    String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects & " + restoredDegrees + " degrees from EduTrace Server! 📥";
-                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
-                } else {
-                    String err = res.errorMessage != null ? res.errorMessage : "Failed to restore cloud data.";
-                    if (callback != null) mainHandler.post(() -> callback.onError(err));
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                if (callback != null) mainHandler.post(() -> callback.onError("Restore error: " + e.getMessage()));
+
+                org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+
+                String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects, and " + restoredDegrees + " degrees from cloud! 📥";
+                if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                return true;
+            } else if (res.statusCode == 404) {
+                return doFallbackRestore(context, token, callback);
+            } else {
+                String err = res.errorMessage != null ? res.errorMessage : "Failed to restore cloud data.";
+                if (callback != null) mainHandler.post(() -> callback.onError(err));
+                return false;
             }
-        });
+        } catch (Exception e) {
+            Log.w(TAG, "Restore error: " + e.getMessage());
+            if (callback != null) mainHandler.post(() -> callback.onError("Restore error: " + e.getMessage()));
+            return false;
+        }
+    }
+
+    private static boolean doFallbackRestore(Context context, String token, SyncProgressCallback callback) {
+        try {
+            if (callback != null) mainHandler.post(() -> callback.onProgress("Restoring from EduTrace Server records..."));
+            StudyDatabase localDb = StudyDatabase.getDatabase(context);
+            StudyDao dao = localDb.studyDao();
+            int restoredDegrees = 0;
+            int restoredSubjects = 0;
+
+            ApiResponse degListRes = sendApiRequest(context, "/degrees", "GET", null, token);
+            if (degListRes.isSuccess() && degListRes.json != null) {
+                JSONArray items = degListRes.json.optJSONArray("items");
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        try {
+                            JSONObject d = items.getJSONObject(i);
+                            Degree degree = new Degree(d.getString("name"), d.optString("color", "#3B82F6"));
+                            degree.id = d.getInt("id");
+                            dao.insertOrReplaceDegree(degree);
+                            restoredDegrees++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error fallback restoring degree: " + t.getMessage());
+                        }
+                    }
+                }
+            }
+
+            ApiResponse subListRes = sendApiRequest(context, "/subjects", "GET", null, token);
+            if (subListRes.isSuccess() && subListRes.json != null) {
+                JSONArray items = subListRes.json.optJSONArray("items");
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        try {
+                            JSONObject s = items.getJSONObject(i);
+                            int courseId = s.optInt("course_id", 1);
+                            Subject subject = new Subject(courseId, s.getString("name"), s.optString("color", "#2563EB"));
+                            subject.id = s.getInt("id");
+                            dao.insertOrReplaceSubject(subject);
+                            restoredSubjects++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error fallback restoring subject: " + t.getMessage());
+                        }
+                    }
+                }
+            }
+
+            int restoredSessions = 0;
+            ApiResponse sessListRes = sendApiRequest(context, "/sessions", "GET", null, token);
+            if (sessListRes.isSuccess() && sessListRes.json != null) {
+                JSONArray items = sessListRes.json.optJSONArray("items");
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        try {
+                            JSONObject sess = items.getJSONObject(i);
+                            int subId = sess.optInt("subject_id", 1);
+                            String startedStr = sess.optString("started_at", "");
+                            String endedStr = sess.optString("ended_at", "");
+                            int durationSec = sess.optInt("duration_seconds", 0);
+                            long startMs = parseIsoOrEpoch(startedStr);
+                            long endMs = !endedStr.isEmpty() ? parseIsoOrEpoch(endedStr) : (startMs + (durationSec * 1000L));
+                            StudySession session = new StudySession(
+                                    subId,
+                                    startMs > 0 ? startMs : System.currentTimeMillis() - (durationSec * 1000L),
+                                    endMs > 0 ? endMs : System.currentTimeMillis(),
+                                    0,
+                                    0,
+                                    sess.optString("notes", "")
+                            );
+                            session.id = sess.optInt("id", 0);
+                            dao.insertOrReplaceSession(session);
+                            restoredSessions++;
+                        } catch (Throwable t) {
+                            Log.w(TAG, "Error fallback restoring session: " + t.getMessage());
+                        }
+                    }
+                }
+            }
+
+            org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(context);
+            String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects & " + restoredDegrees + " degrees from EduTrace Server! 📥";
+            if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Fallback restore error: " + e.getMessage());
+            if (callback != null) mainHandler.post(() -> callback.onError("Restore error: " + e.getMessage()));
+            return false;
+        }
     }
 
     private static long parseIsoOrEpoch(String dateStr) {
@@ -1234,35 +1435,34 @@ public class CloudDbManager {
 
     public static void fetchLeaderboard(Context context, String timeframe, LeaderboardCallback callback) {
         final String token = isLoggedIn(context) ? getAccessToken(context) : null;
+        final String tf = (timeframe != null && !timeframe.isEmpty()) ? timeframe.toLowerCase(Locale.ROOT) : "all_time";
+
+        // 1. Instant Cached Return (0ms loading if cached)
+        String cachedRaw = getCachedRankingJson(context, tf);
+        if (cachedRaw != null && !cachedRaw.isEmpty()) {
+            try {
+                JSONObject cachedObj = new JSONObject(cachedRaw);
+                List<RankingUser> cachedUsers = parseRankingsUsers(cachedObj);
+                RankingUser cachedCurrentRank = parseCurrentRank(cachedObj, cachedUsers);
+                int cachedTotal = cachedObj.optInt("total_participants", cachedUsers.size());
+                if (!cachedUsers.isEmpty()) {
+                    mainHandler.post(() -> {
+                        if (callback != null) callback.onSuccess(cachedUsers, cachedCurrentRank, cachedTotal);
+                    });
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // 2. Network Fetch & Revalidate
         cloudExecutor.execute(() -> {
             try {
-                String tf = (timeframe != null && !timeframe.isEmpty()) ? timeframe.toLowerCase() : "all_time";
                 ApiResponse res = sendApiRequest(context, "/rankings?timeframe=" + tf, "GET", null, token);
                 if (res.isSuccess() && res.json != null) {
-                    List<RankingUser> users = new ArrayList<>();
-                    JSONArray arr = res.json.optJSONArray("rankings");
-                    if (arr != null) {
-                        for (int i = 0; i < arr.length(); i++) {
-                            JSONObject item = arr.getJSONObject(i);
-                            RankingUser u = RankingUser.fromJson(item);
-                            if (u != null) users.add(u);
-                        }
+                    if (res.rawBody != null) {
+                        saveCachedRankingJson(context, tf, res.rawBody);
                     }
-                    RankingUser currentRank = null;
-                    JSONObject curObj = res.json.optJSONObject("current_user");
-                    if (curObj == null) curObj = res.json.optJSONObject("current_user_rank");
-                    if (curObj == null) curObj = res.json.optJSONObject("current_user_stats");
-                    if (curObj != null) {
-                        currentRank = RankingUser.fromJson(curObj);
-                    }
-                    if (currentRank == null) {
-                        for (RankingUser u : users) {
-                            if (u.isCurrentUser) {
-                                currentRank = u;
-                                break;
-                            }
-                        }
-                    }
+                    List<RankingUser> users = parseRankingsUsers(res.json);
+                    RankingUser currentRank = parseCurrentRank(res.json, users);
                     int total = res.json.optInt("total_participants", users.size());
                     final RankingUser fCurrentRank = currentRank;
                     if (callback != null) mainHandler.post(() -> callback.onSuccess(users, fCurrentRank, total));
@@ -1276,16 +1476,70 @@ public class CloudDbManager {
         });
     }
 
+    public static List<RankingUser> parseRankingsUsers(JSONObject json) {
+        List<RankingUser> users = new ArrayList<>();
+        if (json == null) return users;
+        JSONArray arr = json.optJSONArray("rankings");
+        if (arr != null) {
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject item = arr.optJSONObject(i);
+                if (item != null) {
+                    RankingUser u = RankingUser.fromJson(item);
+                    if (u != null) users.add(u);
+                }
+            }
+        }
+        return users;
+    }
+
+    public static RankingUser parseCurrentRank(JSONObject json, List<RankingUser> users) {
+        if (json == null) return null;
+        RankingUser currentRank = null;
+        JSONObject curObj = json.optJSONObject("current_user");
+        if (curObj == null) curObj = json.optJSONObject("current_user_rank");
+        if (curObj == null) curObj = json.optJSONObject("current_user_stats");
+        if (curObj != null) {
+            currentRank = RankingUser.fromJson(curObj);
+        }
+        if (currentRank == null && users != null) {
+            for (RankingUser u : users) {
+                if (u.isCurrentUser) {
+                    currentRank = u;
+                    break;
+                }
+            }
+        }
+        return currentRank;
+    }
+
     public static void fetchMyRanking(Context context, MyRankingCallback callback) {
         if (!isLoggedIn(context)) {
             if (callback != null) mainHandler.post(() -> callback.onError("Sign in to view your personal ranking."));
             return;
         }
+
+        // Check cache first
+        String cachedRaw = getCachedRankingJson(context, "me");
+        if (cachedRaw != null && !cachedRaw.isEmpty()) {
+            try {
+                JSONObject cachedObj = new JSONObject(cachedRaw);
+                MyRankingSummary summary = MyRankingSummary.fromJson(cachedObj);
+                if (summary != null) {
+                    mainHandler.post(() -> {
+                        if (callback != null) callback.onSuccess(summary);
+                    });
+                }
+            } catch (Throwable ignored) {}
+        }
+
         final String token = getAccessToken(context);
         cloudExecutor.execute(() -> {
             try {
                 ApiResponse res = sendApiRequest(context, "/rankings/me", "GET", null, token);
                 if (res.isSuccess() && res.json != null) {
+                    if (res.rawBody != null) {
+                        saveCachedRankingJson(context, "me", res.rawBody);
+                    }
                     MyRankingSummary summary = MyRankingSummary.fromJson(res.json);
                     if (callback != null) mainHandler.post(() -> callback.onSuccess(summary));
                 } else {

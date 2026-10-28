@@ -32,6 +32,13 @@ public class EduTraceApplication extends Application {
         } catch (Throwable t) {
             t.printStackTrace();
         }
+
+        try {
+            // Automatically sync and load online data in background on cold app startup
+            org.sabbir.edutrace.data.cloud.CloudDbManager.autoSyncOnStartup(this);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 }
 

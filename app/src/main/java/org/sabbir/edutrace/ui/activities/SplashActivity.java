@@ -17,6 +17,10 @@ public class SplashActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
 
+        if (CloudDbManager.isLoggedIn(this)) {
+            CloudDbManager.autoSyncOnStartup(this);
+        }
+
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             try {
                 if (!CloudDbManager.isLoggedIn(SplashActivity.this)) {
