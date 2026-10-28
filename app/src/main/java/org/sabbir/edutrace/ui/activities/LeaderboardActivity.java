@@ -44,6 +44,7 @@ public class LeaderboardActivity extends AppCompatActivity {
 
     // Podium views
     private View layoutPodium;
+    private View podiumFirst, podiumSecond, podiumThird;
     private TextView tvFirstName, tvFirstHours, tvFirstAvatar;
     private TextView tvSecondName, tvSecondHours, tvSecondAvatar;
     private TextView tvThirdName, tvThirdHours, tvThirdAvatar;
@@ -80,6 +81,10 @@ public class LeaderboardActivity extends AppCompatActivity {
         tvMyStreakBadge = findViewById(R.id.tvMyStreakBadge);
 
         layoutPodium = findViewById(R.id.layoutPodium);
+        podiumFirst = findViewById(R.id.podiumFirst);
+        podiumSecond = findViewById(R.id.podiumSecond);
+        podiumThird = findViewById(R.id.podiumThird);
+
         tvFirstName = findViewById(R.id.tvFirstName);
         tvFirstHours = findViewById(R.id.tvFirstHours);
         tvFirstAvatar = findViewById(R.id.tvFirstAvatar);
@@ -178,24 +183,40 @@ public class LeaderboardActivity extends AppCompatActivity {
                     tvMyTierBadge.setTextColor(getTierColor(currentUserRank.tier));
                 }
 
-                // Update podium if at least 2 users exist
-                if (users.size() >= 3) {
+                // Update podium if at least 1 user exists
+                if (users.size() >= 1) {
                     layoutPodium.setVisibility(View.VISIBLE);
-                    RankingUser first = users.get(0);
-                    RankingUser second = users.get(1);
-                    RankingUser third = users.get(2);
 
+                    // 1st Place Scholar
+                    RankingUser first = users.get(0);
                     tvFirstName.setText(first.displayName);
                     tvFirstHours.setText(first.formattedTime);
-                    tvFirstAvatar.setText(first.displayName.isEmpty() ? "1" : first.displayName.substring(0, 1).toUpperCase(Locale.ROOT));
+                    String firstInitial = first.displayName.isEmpty() ? "1" : first.displayName.substring(0, 1).toUpperCase(Locale.ROOT);
+                    tvFirstAvatar.setText(firstInitial);
 
-                    tvSecondName.setText(second.displayName);
-                    tvSecondHours.setText(second.formattedTime);
-                    tvSecondAvatar.setText(second.displayName.isEmpty() ? "2" : second.displayName.substring(0, 1).toUpperCase(Locale.ROOT));
+                    // 2nd Place Scholar
+                    if (users.size() >= 2) {
+                        podiumSecond.setVisibility(View.VISIBLE);
+                        RankingUser second = users.get(1);
+                        tvSecondName.setText(second.displayName);
+                        tvSecondHours.setText(second.formattedTime);
+                        String secondInitial = second.displayName.isEmpty() ? "2" : second.displayName.substring(0, 1).toUpperCase(Locale.ROOT);
+                        tvSecondAvatar.setText(secondInitial);
+                    } else {
+                        podiumSecond.setVisibility(View.INVISIBLE);
+                    }
 
-                    tvThirdName.setText(third.displayName);
-                    tvThirdHours.setText(third.formattedTime);
-                    tvThirdAvatar.setText(third.displayName.isEmpty() ? "3" : third.displayName.substring(0, 1).toUpperCase(Locale.ROOT));
+                    // 3rd Place Scholar
+                    if (users.size() >= 3) {
+                        podiumThird.setVisibility(View.VISIBLE);
+                        RankingUser third = users.get(2);
+                        tvThirdName.setText(third.displayName);
+                        tvThirdHours.setText(third.formattedTime);
+                        String thirdInitial = third.displayName.isEmpty() ? "3" : third.displayName.substring(0, 1).toUpperCase(Locale.ROOT);
+                        tvThirdAvatar.setText(thirdInitial);
+                    } else {
+                        podiumThird.setVisibility(View.INVISIBLE);
+                    }
                 } else {
                     layoutPodium.setVisibility(View.GONE);
                 }

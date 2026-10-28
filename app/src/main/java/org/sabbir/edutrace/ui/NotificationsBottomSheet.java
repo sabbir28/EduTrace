@@ -20,6 +20,7 @@ import org.sabbir.edutrace.R;
 import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.models.CloudNotification;
 import org.sabbir.edutrace.ui.adapters.NotificationAdapter;
+import org.sabbir.edutrace.utils.NotificationCacheManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -84,20 +85,55 @@ public class NotificationsBottomSheet extends BottomSheetDialogFragment {
 
         btnMarkAllRead.setOnClickListener(v -> markAllRead());
 
-        loadNotifications();
+        // Fast cache-first loading + background sync
+        loadNotificationsFast();
     }
 
-    private void loadNotifications() {
+    private void loadNotificationsFast() {
         if (getContext() == null) return;
-        progressBar.setVisibility(View.VISIBLE);
-        layoutEmpty.setVisibility(View.GONE);
+
+        // 1. Instant Cache Layer (0ms retrieval)
+        List<CloudNotification> cached = NotificationCacheManager.getCachedNotifications(getContext());
+        int cachedUnread = NotificationCacheManager.getCachedUnreadCount(getContext());
+
+        if (!cached.isEmpty()) {
+            currentList = new ArrayList<>(cached);
+            adapter.setItems(currentList);
+            layoutEmpty.setVisibility(View.GONE);
+            updateBadgeUI(cachedUnread);
+            // Hide progress spinner because cached data is already visible
+            progressBar.setVisibility(View.GONE);
+        } else {
+            // Check if user is guest/logged out
+            if (!CloudDbManager.isLoggedIn(getContext())) {
+                currentList = NotificationCacheManager.getFallbackGuestNotifications(getContext());
+                adapter.setItems(currentList);
+                layoutEmpty.setVisibility(View.GONE);
+                updateBadgeUI(1);
+                progressBar.setVisibility(View.GONE);
+                return;
+            }
+            // If cache was genuinely empty and user is logged in, show spinner while initial fetch runs
+            progressBar.setVisibility(View.VISIBLE);
+            layoutEmpty.setVisibility(View.GONE);
+        }
+
+        // 2. Background Revalidation (Network Sync)
+        if (!CloudDbManager.isLoggedIn(getContext())) {
+            progressBar.setVisibility(View.GONE);
+            return;
+        }
 
         CloudDbManager.fetchNotifications(getContext(), false, new CloudDbManager.NotificationsCallback() {
             @Override
             public void onSuccess(List<CloudNotification> notifications, int unreadCount) {
+                if (getContext() == null) return;
                 progressBar.setVisibility(View.GONE);
-                currentList = notifications != null ? notifications : new ArrayList<>();
+                currentList = notifications != null ? new ArrayList<>(notifications) : new ArrayList<>();
                 adapter.setItems(currentList);
+
+                // Update cache
+                NotificationCacheManager.saveNotifications(getContext(), currentList, unreadCount);
 
                 if (currentList.isEmpty()) {
                     layoutEmpty.setVisibility(View.VISIBLE);
@@ -105,73 +141,88 @@ public class NotificationsBottomSheet extends BottomSheetDialogFragment {
                     layoutEmpty.setVisibility(View.GONE);
                 }
 
-                if (unreadCount > 0) {
-                    tvUnreadBadge.setText(unreadCount + " New");
-                    tvUnreadBadge.setVisibility(View.VISIBLE);
-                    btnMarkAllRead.setVisibility(View.VISIBLE);
-                } else {
-                    tvUnreadBadge.setVisibility(View.GONE);
-                    btnMarkAllRead.setVisibility(View.GONE);
-                }
+                updateBadgeUI(unreadCount);
             }
 
             @Override
             public void onError(String message) {
+                if (getContext() == null) return;
                 progressBar.setVisibility(View.GONE);
-                if (currentList.isEmpty()) layoutEmpty.setVisibility(View.VISIBLE);
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+                // If we already had cached data displayed, don't blank the screen!
+                if (currentList.isEmpty()) {
+                    layoutEmpty.setVisibility(View.VISIBLE);
                 }
             }
         });
+    }
+
+    private void updateBadgeUI(int unreadCount) {
+        if (unreadCount > 0) {
+            tvUnreadBadge.setText(unreadCount + " New");
+            tvUnreadBadge.setVisibility(View.VISIBLE);
+            btnMarkAllRead.setVisibility(View.VISIBLE);
+        } else {
+            tvUnreadBadge.setVisibility(View.GONE);
+            btnMarkAllRead.setVisibility(View.GONE);
+        }
     }
 
     private void markSingleRead(CloudNotification notification) {
         if (getContext() == null || notification == null) return;
-        CloudDbManager.markNotificationRead(getContext(), notification.id, new CloudDbManager.ActionCallback() {
-            @Override
-            public void onSuccess(String message) {
-                loadNotifications();
-            }
 
-            @Override
-            public void onError(String message) {
-                if (getContext() != null) Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
-            }
-        });
+        // Optimistic UI update: instantly update UI & local cache
+        notification.setRead(true);
+        NotificationCacheManager.markItemRead(getContext(), notification.id);
+        adapter.notifyDataSetChanged();
+        updateBadgeUI(NotificationCacheManager.getCachedUnreadCount(getContext()));
+
+        // Silent background server sync
+        CloudDbManager.markNotificationRead(getContext(), notification.id, null);
     }
 
     private void markAllRead() {
         if (getContext() == null) return;
+
+        // Optimistic UI update: instantly mark all items read
+        for (CloudNotification n : currentList) {
+            n.setRead(true);
+        }
+        NotificationCacheManager.markAllRead(getContext());
+        adapter.notifyDataSetChanged();
+        updateBadgeUI(0);
+
+        // Silent background server sync
         btnMarkAllRead.setEnabled(false);
         CloudDbManager.markAllNotificationsRead(getContext(), new CloudDbManager.ActionCallback() {
             @Override
             public void onSuccess(String message) {
-                btnMarkAllRead.setEnabled(true);
-                loadNotifications();
+                if (getContext() != null) btnMarkAllRead.setEnabled(true);
             }
 
             @Override
             public void onError(String message) {
-                btnMarkAllRead.setEnabled(true);
-                if (getContext() != null) Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+                if (getContext() != null) btnMarkAllRead.setEnabled(true);
             }
         });
     }
 
     private void deleteSingle(CloudNotification notification) {
         if (getContext() == null || notification == null) return;
-        CloudDbManager.deleteNotification(getContext(), notification.id, new CloudDbManager.ActionCallback() {
-            @Override
-            public void onSuccess(String message) {
-                loadNotifications();
-            }
 
-            @Override
-            public void onError(String message) {
-                if (getContext() != null) Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+        // Optimistic UI update: instantly remove from list & local cache
+        int index = currentList.indexOf(notification);
+        if (index >= 0) {
+            currentList.remove(index);
+            NotificationCacheManager.deleteItem(getContext(), notification.id);
+            adapter.notifyItemRemoved(index);
+            if (currentList.isEmpty()) {
+                layoutEmpty.setVisibility(View.VISIBLE);
             }
-        });
+            updateBadgeUI(NotificationCacheManager.getCachedUnreadCount(getContext()));
+        }
+
+        // Silent background server sync
+        CloudDbManager.deleteNotification(getContext(), notification.id, null);
     }
 
     @Override

@@ -464,8 +464,8 @@ public class CloudDbManager {
             URL url = new URL(fullUrl);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod(method);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(25000);
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
             conn.setDoInput(true);
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
@@ -1217,8 +1217,18 @@ public class CloudDbManager {
                     }
                     RankingUser currentRank = null;
                     JSONObject curObj = res.json.optJSONObject("current_user");
+                    if (curObj == null) curObj = res.json.optJSONObject("current_user_rank");
+                    if (curObj == null) curObj = res.json.optJSONObject("current_user_stats");
                     if (curObj != null) {
                         currentRank = RankingUser.fromJson(curObj);
+                    }
+                    if (currentRank == null) {
+                        for (RankingUser u : users) {
+                            if (u.isCurrentUser) {
+                                currentRank = u;
+                                break;
+                            }
+                        }
                     }
                     int total = res.json.optInt("total_participants", users.size());
                     final RankingUser fCurrentRank = currentRank;

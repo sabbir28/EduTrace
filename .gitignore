@@ -34,3 +34,6 @@ captures/
 
 # Mac OS files
 .DS_Store
+
+# Local utility tools
+tools/

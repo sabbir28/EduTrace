@@ -470,10 +470,20 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
     }
 
     private void refreshNotificationBadge() {
+        int cachedCount = org.sabbir.edutrace.utils.NotificationCacheManager.getCachedUnreadCount(this);
+        if (tvNotificationBadge != null) {
+            if (cachedCount > 0) {
+                tvNotificationBadge.setText(cachedCount > 99 ? "99+" : String.valueOf(cachedCount));
+                tvNotificationBadge.setVisibility(View.VISIBLE);
+            } else {
+                tvNotificationBadge.setVisibility(View.GONE);
+            }
+        }
+
         if (!CloudDbManager.isLoggedIn(this)) {
-            if (tvNotificationBadge != null) tvNotificationBadge.setVisibility(View.GONE);
             return;
         }
+
         CloudDbManager.fetchUnreadNotificationCount(this, new CloudDbManager.CountCallback() {
             @Override
             public void onSuccess(int count) {
@@ -489,7 +499,7 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
 
             @Override
             public void onError(String message) {
-                if (tvNotificationBadge != null) tvNotificationBadge.setVisibility(View.GONE);
+                // Keep cached badge if available
             }
         });
     }

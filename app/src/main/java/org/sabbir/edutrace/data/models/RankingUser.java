@@ -38,13 +38,48 @@ public class RankingUser {
         if (obj == null) return null;
         int rank = obj.optInt("rank", 0);
         int userId = obj.optInt("user_id", -1);
-        String username = obj.optString("username", "Scholar");
-        String displayName = obj.optString("display_name", username);
+
+        String rawName = obj.optString("name", "").trim();
+        String rawDisplayName = obj.optString("display_name", "").trim();
+        String rawUsername = obj.optString("username", "").trim();
+        String rawUserLabel = obj.optString("user_label", "").trim();
+
+        String displayName;
+        if (!rawDisplayName.isEmpty()) {
+            displayName = rawDisplayName;
+        } else if (!rawName.isEmpty()) {
+            displayName = rawName;
+        } else if (!rawUsername.isEmpty()) {
+            displayName = rawUsername;
+        } else if (!rawUserLabel.isEmpty()) {
+            displayName = rawUserLabel;
+        } else {
+            displayName = "Scholar";
+        }
+
+        String username;
+        if (!rawUsername.isEmpty()) {
+            username = rawUsername;
+        } else if (!rawName.isEmpty()) {
+            username = rawName;
+        } else if (!rawDisplayName.isEmpty()) {
+            username = rawDisplayName;
+        } else if (!rawUserLabel.isEmpty()) {
+            username = rawUserLabel;
+        } else {
+            username = displayName;
+        }
+
         String avatarUrl = obj.optString("avatar_url", "");
         String tier = obj.optString("tier", "Bronze");
         long totalSec = obj.optLong("total_seconds", 0);
         double totalHours = obj.optDouble("total_hours", totalSec / 3600.0);
-        String formatted = obj.optString("study_time_formatted", formatSeconds(totalSec));
+
+        String formatted = obj.optString("formatted_time", "").trim();
+        if (formatted.isEmpty()) {
+            formatted = obj.optString("study_time_formatted", formatSeconds(totalSec));
+        }
+
         int streak = obj.optInt("streak_days", 0);
         boolean isCurrent = obj.optBoolean("is_current_user", false);
 

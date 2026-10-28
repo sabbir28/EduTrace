@@ -10,7 +10,7 @@ public class CloudNotification {
     public final String title;
     public final String message;
     public final String type;
-    public final boolean isRead;
+    public boolean isRead;
     public final long createdAtEpoch;
     public final String actionUrl;
     public final String metadataJson;
@@ -25,6 +25,25 @@ public class CloudNotification {
         this.createdAtEpoch = createdAtEpoch;
         this.actionUrl = actionUrl != null ? actionUrl : "";
         this.metadataJson = metadataJson != null ? metadataJson : "";
+    }
+
+    public void setRead(boolean read) {
+        this.isRead = read;
+    }
+
+    public JSONObject toJson() {
+        JSONObject obj = new JSONObject();
+        try {
+            obj.put("id", id);
+            obj.put("title", title);
+            obj.put("message", message);
+            obj.put("type", type);
+            obj.put("is_read", isRead);
+            obj.put("created_at_epoch", createdAtEpoch);
+            obj.put("action_url", actionUrl);
+            obj.put("metadata", metadataJson);
+        } catch (Exception ignored) {}
+        return obj;
     }
 
     public static CloudNotification fromJson(JSONObject obj) {
@@ -51,7 +70,13 @@ public class CloudNotification {
             String clean = dateStr.replace("Z", "");
             if (clean.contains(".")) clean = clean.substring(0, clean.indexOf('.'));
             java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US);
-            java.util.Date d = sdf.parse(clean);
+            java.text.SimpleDateFormat sdfAlt = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+            java.util.Date d = null;
+            try {
+                d = sdf.parse(clean);
+            } catch (Exception e) {
+                d = sdfAlt.parse(clean);
+            }
             return d != null ? d.getTime() : System.currentTimeMillis();
         } catch (Exception e) {
             return System.currentTimeMillis();
