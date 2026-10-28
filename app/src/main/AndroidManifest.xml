@@ -40,6 +40,7 @@
         <activity android:name=".ui.activities.SubjectActivity" android:exported="false" />
         <activity android:name=".ui.activities.SettingsActivity" android:exported="false" />
         <activity android:name=".ui.activities.AuthActivity" android:exported="false" />
+        <activity android:name=".ui.activities.LeaderboardActivity" android:exported="false" />
 
         <receiver
             android:name=".widget.StudyPulseWidget"

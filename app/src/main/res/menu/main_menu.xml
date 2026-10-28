@@ -2,6 +2,16 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_notifications"
+        android:title="Notifications"
+        app:actionLayout="@layout/menu_action_notification"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/action_leaderboard"
+        android:icon="@drawable/ic_trophy"
+        android:title="Leaderboard"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_reports"
         android:icon="@android:drawable/ic_menu_sort_by_size"
         android:title="@string/reports"

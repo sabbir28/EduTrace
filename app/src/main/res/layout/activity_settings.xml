@@ -425,6 +425,18 @@
                             app:cornerRadius="12dp"
                             android:layout_marginTop="8dp" />
 
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnChangePassword"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Change Cloud Password 🔒"
+                            android:textColor="@android:color/white"
+                            app:backgroundTint="#1E293B"
+                            app:strokeColor="#334155"
+                            app:strokeWidth="1dp"
+                            app:cornerRadius="12dp"
+                            android:layout_marginTop="8dp" />
+
                         <View
                             android:layout_width="match_parent"
                             android:layout_height="1dp"

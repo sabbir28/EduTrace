@@ -10,14 +10,21 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.sabbir.edutrace.data.db.StudyDao;
 import org.sabbir.edutrace.data.db.StudyDatabase;
+import org.sabbir.edutrace.data.models.CloudNotification;
 import org.sabbir.edutrace.data.models.Degree;
+import org.sabbir.edutrace.data.models.MyRankingSummary;
+import org.sabbir.edutrace.data.models.RankingUser;
 import org.sabbir.edutrace.data.models.StudySession;
 import org.sabbir.edutrace.data.models.Subject;
+import org.sabbir.edutrace.data.models.TimelineDayData;
+import org.sabbir.edutrace.data.models.TimelineSegment;
+import org.sabbir.edutrace.data.models.TimerMatchStatus;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -83,6 +90,41 @@ public class CloudDbManager {
 
     public interface HealthCallback {
         void onSuccess(String status);
+        void onError(String message);
+    }
+
+    public interface ActionCallback {
+        void onSuccess(String message);
+        void onError(String message);
+    }
+
+    public interface NotificationsCallback {
+        void onSuccess(List<CloudNotification> notifications, int unreadCount);
+        void onError(String message);
+    }
+
+    public interface CountCallback {
+        void onSuccess(int count);
+        void onError(String message);
+    }
+
+    public interface TimerMatchCallback {
+        void onSuccess(TimerMatchStatus status);
+        void onError(String message);
+    }
+
+    public interface LeaderboardCallback {
+        void onSuccess(List<RankingUser> users, RankingUser currentUserRank, int totalParticipants);
+        void onError(String message);
+    }
+
+    public interface MyRankingCallback {
+        void onSuccess(MyRankingSummary summary);
+        void onError(String message);
+    }
+
+    public interface TimelineCallback {
+        void onSuccess(TimelineDayData timelineData);
         void onError(String message);
     }
 
@@ -930,5 +972,279 @@ public class CloudDbManager {
 
     public static void restoreData(Context context) {
         restoreData(context, (SyncProgressCallback) null);
+    }
+
+    // ==========================================
+    // Account Security: Change Password
+    // ==========================================
+
+    public static void changePassword(Context context, String currentPassword, String newPassword, ActionCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Please sign in to change your password."));
+            return;
+        }
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("current_password", currentPassword);
+                payload.put("new_password", newPassword);
+
+                ApiResponse res = sendApiRequest(context, "/auth/change-password", "PUT", payload, token);
+                if (res.isSuccess()) {
+                    String msg = "Password updated successfully! 🔒";
+                    if (res.json != null && res.json.has("message")) {
+                        msg = res.json.getString("message");
+                    }
+                    final String successMsg = msg;
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(successMsg));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to update password.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError("Error: " + e.getMessage()));
+            }
+        });
+    }
+
+    // ==========================================
+    // In-App Notification Center & Timer-Match
+    // ==========================================
+
+    public static void fetchNotifications(Context context, boolean unreadOnly, NotificationsCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Sign in required to view notifications."));
+            return;
+        }
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                String endpoint = "/notifications?unread_only=" + (unreadOnly ? "true" : "false") + "&limit=50";
+                ApiResponse res = sendApiRequest(context, endpoint, "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    List<CloudNotification> list = new ArrayList<>();
+                    JSONArray arr = res.json.optJSONArray("notifications");
+                    if (arr != null) {
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject item = arr.getJSONObject(i);
+                            CloudNotification n = CloudNotification.fromJson(item);
+                            if (n != null) list.add(n);
+                        }
+                    }
+                    int unreadCount = res.json.optInt("unread_count", 0);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(list, unreadCount));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to load notifications.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError("Error loading notifications: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void fetchUnreadNotificationCount(Context context, CountCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onSuccess(0));
+            return;
+        }
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/notifications/unread-count", "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    int count = res.json.optInt("count", res.json.optInt("unread_count", 0));
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(count));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(0));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onSuccess(0));
+            }
+        });
+    }
+
+    public static void markNotificationRead(Context context, int notificationId, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/notifications/" + notificationId + "/read", "PUT", null, token);
+                if (res.isSuccess()) {
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Marked as read"));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void markAllNotificationsRead(Context context, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/notifications/read-all", "PUT", null, token);
+                if (res.isSuccess()) {
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("All notifications marked as read"));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void deleteNotification(Context context, int notificationId, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/notifications/" + notificationId, "DELETE", null, token);
+                if (res.isSuccess()) {
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Notification removed"));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void checkTimerMatch(Context context, TimerMatchCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/notifications/timer-match", "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    TimerMatchStatus status = TimerMatchStatus.fromJson(res.json);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(status));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    // ==========================================
+    // Leaderboard & Student Rankings
+    // ==========================================
+
+    public static void fetchLeaderboard(Context context, String timeframe, LeaderboardCallback callback) {
+        final String token = isLoggedIn(context) ? getAccessToken(context) : null;
+        cloudExecutor.execute(() -> {
+            try {
+                String tf = (timeframe != null && !timeframe.isEmpty()) ? timeframe.toLowerCase() : "all_time";
+                ApiResponse res = sendApiRequest(context, "/rankings?timeframe=" + tf, "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    List<RankingUser> users = new ArrayList<>();
+                    JSONArray arr = res.json.optJSONArray("rankings");
+                    if (arr != null) {
+                        for (int i = 0; i < arr.length(); i++) {
+                            JSONObject item = arr.getJSONObject(i);
+                            RankingUser u = RankingUser.fromJson(item);
+                            if (u != null) users.add(u);
+                        }
+                    }
+                    RankingUser currentRank = null;
+                    JSONObject curObj = res.json.optJSONObject("current_user");
+                    if (curObj != null) {
+                        currentRank = RankingUser.fromJson(curObj);
+                    }
+                    int total = res.json.optInt("total_participants", users.size());
+                    final RankingUser fCurrentRank = currentRank;
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(users, fCurrentRank, total));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to load leaderboard rankings.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError("Leaderboard error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void fetchMyRanking(Context context, MyRankingCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Sign in to view your personal ranking."));
+            return;
+        }
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/rankings/me", "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    MyRankingSummary summary = MyRankingSummary.fromJson(res.json);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(summary));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to load user ranking.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError("Ranking error: " + e.getMessage()));
+            }
+        });
+    }
+
+    // ==========================================
+    // 24-Hour Timeline & Sleep/Lost Time Analysis
+    // ==========================================
+
+    public static void fetch24hTimeline(Context context, String dateYmd, TimelineCallback callback) {
+        if (!isLoggedIn(context)) {
+            if (callback != null) mainHandler.post(() -> callback.onError("Sign in to analyze 24h daily routine."));
+            return;
+        }
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                String endpoint = "/analytics/timeline/24h" + (dateYmd != null && !dateYmd.isEmpty() ? "?date=" + dateYmd : "");
+                ApiResponse res = sendApiRequest(context, endpoint, "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    TimelineDayData data = TimelineDayData.fromJson(res.json);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(data));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to load 24h timeline data.";
+                    if (callback != null) mainHandler.post(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError("Timeline error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public static void recordDeviceActivity(Context context, String eventType, ActionCallback callback) {
+        if (!isLoggedIn(context) || eventType == null || eventType.isEmpty()) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("event_type", eventType);
+                SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+                iso.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+                payload.put("timestamp", iso.format(new Date()));
+
+                ApiResponse res = sendApiRequest(context, "/analytics/timeline/activity", "POST", payload, token);
+                if (res.isSuccess()) {
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Activity recorded"));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void recordDeviceActivity(Context context, String eventType) {
+        recordDeviceActivity(context, eventType, null);
     }
 }

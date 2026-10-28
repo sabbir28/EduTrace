@@ -14,9 +14,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.models.Degree;
 import org.sabbir.edutrace.data.models.StudySession;
 import org.sabbir.edutrace.data.models.Subject;
+import org.sabbir.edutrace.data.models.TimelineDayData;
+import org.sabbir.edutrace.data.models.TimelineSegment;
 import org.sabbir.edutrace.databinding.ActivityReportsBinding;
 import org.sabbir.edutrace.ui.adapters.StudyBreakdownAdapter;
 import org.sabbir.edutrace.viewmodels.StudyViewModel;
@@ -31,6 +34,10 @@ public class ReportsActivity extends AppCompatActivity {
     private List<Subject> allSubjects = new ArrayList<>();
     private List<Degree> allDegrees = new ArrayList<>();
     
+    private int timelineDayOffset = 0;
+    private SimpleDateFormat timelineYmdFormat = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+    private SimpleDateFormat timelineDisplayFormat = new SimpleDateFormat("EEE, MMM d", Locale.getDefault());
+
     private Calendar currentWeekStart;
     private SimpleDateFormat weekRangeFormat = new SimpleDateFormat("MMM dd", Locale.getDefault());
     private SimpleDateFormat dayFullFormat = new SimpleDateFormat("EEEE, MMM dd", Locale.getDefault());
@@ -71,6 +78,18 @@ public class ReportsActivity extends AppCompatActivity {
             updateDailyDetail();
         });
 
+        binding.btnPrevTimelineDay.setOnClickListener(v -> {
+            timelineDayOffset--;
+            load24hTimeline();
+        });
+
+        binding.btnNextTimelineDay.setOnClickListener(v -> {
+            timelineDayOffset++;
+            load24hTimeline();
+        });
+
+        load24hTimeline();
+
         viewModel.getAllDegrees().observe(this, degrees -> {
             allDegrees = degrees;
             viewModel.getAllSubjects().observe(this, subjects -> {
@@ -78,6 +97,7 @@ public class ReportsActivity extends AppCompatActivity {
                 viewModel.getAllSessions().observe(this, sessions -> {
                     allSessions = sessions;
                     updateContent();
+                    load24hTimeline();
                 });
             });
         });
@@ -167,5 +187,73 @@ public class ReportsActivity extends AppCompatActivity {
             binding.rvDayBreakdown.setVisibility(View.VISIBLE);
             breakdownAdapter.setItems(breakdownItems);
         }
+    }
+
+    private void load24hTimeline() {
+        Calendar cal = Calendar.getInstance();
+        cal.add(Calendar.DAY_OF_YEAR, timelineDayOffset);
+        Date targetDate = cal.getTime();
+
+        String dateYmd = timelineYmdFormat.format(targetDate);
+        String label = (timelineDayOffset == 0) ? "Today (" + timelineDisplayFormat.format(targetDate) + ")" :
+                       (timelineDayOffset == -1) ? "Yesterday (" + timelineDisplayFormat.format(targetDate) + ")" :
+                       timelineDisplayFormat.format(targetDate);
+        binding.tvTimelineDate.setText(label);
+
+        CloudDbManager.fetch24hTimeline(this, dateYmd, new CloudDbManager.TimelineCallback() {
+            @Override
+            public void onSuccess(TimelineDayData data) {
+                if (data != null) {
+                    binding.tvTimelineWake.setText(data.wakeTime);
+                    binding.tvTimelineSleep.setText(data.sleepTime);
+                    binding.tvTimelineSleepHours.setText(String.format(Locale.getDefault(), "%.1fh", data.totalSleepHours));
+                    binding.tvTimelineStudyHours.setText(String.format(Locale.getDefault(), "%.1fh", data.totalStudyHours));
+                    binding.dayTimelineView.setTimelineData(data);
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                // If offline or error, generate local timeline fallback from study sessions
+                generateLocalTimelineFallback(targetDate);
+            }
+        });
+    }
+
+    private void generateLocalTimelineFallback(Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        long dayStart = cal.getTimeInMillis();
+        long dayEnd = dayStart + (24 * 3600 * 1000L);
+
+        List<TimelineSegment> list = new ArrayList<>();
+        // Default sleep segment 00:00 - 07:00
+        list.add(new TimelineSegment("sleep", "00:00", "07:00", 420, "Sleep", "#1E1B4B"));
+
+        long totalStudySec = 0;
+        SimpleDateFormat hm = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        if (allSessions != null) {
+            for (StudySession s : allSessions) {
+                if (s.startTimestamp >= dayStart && s.startTimestamp < dayEnd) {
+                    long durationSec = (s.endTimestamp - s.startTimestamp) / 1000L;
+                    totalStudySec += durationSec;
+                    String startStr = hm.format(new Date(s.startTimestamp));
+                    String endStr = hm.format(new Date(s.endTimestamp));
+                    int mins = (int) (durationSec / 60);
+                    list.add(new TimelineSegment("study", startStr, endStr, mins, "Study Session", "#2563EB"));
+                }
+            }
+        }
+
+        double studyHours = totalStudySec / 3600.0;
+        binding.tvTimelineWake.setText("07:00");
+        binding.tvTimelineSleep.setText("23:30");
+        binding.tvTimelineSleepHours.setText("7.0h");
+        binding.tvTimelineStudyHours.setText(String.format(Locale.getDefault(), "%.1fh", studyHours));
+        binding.dayTimelineView.setSegments(list);
     }
 }

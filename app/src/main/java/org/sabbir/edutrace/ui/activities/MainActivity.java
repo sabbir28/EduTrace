@@ -9,6 +9,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.RadioGroup;
+import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -399,15 +400,28 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
                 .show();
     }
 
+    private TextView tvNotificationBadge;
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_menu, menu);
+
+        MenuItem notifItem = menu.findItem(R.id.action_notifications);
+        if (notifItem != null && notifItem.getActionView() != null) {
+            View actionView = notifItem.getActionView();
+            tvNotificationBadge = actionView.findViewById(R.id.tvNotificationBadge);
+            actionView.setOnClickListener(v -> showNotificationsBottomSheet());
+            refreshNotificationBadge();
+        }
         return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_reports) {
+        if (item.getItemId() == R.id.action_leaderboard) {
+            startActivity(new Intent(this, LeaderboardActivity.class));
+            return true;
+        } else if (item.getItemId() == R.id.action_reports) {
             startActivity(new Intent(this, ReportsActivity.class));
             return true;
         } else if (item.getItemId() == R.id.action_settings) {
@@ -417,12 +431,96 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         return super.onOptionsItemSelected(item);
     }
 
+    private void showNotificationsBottomSheet() {
+        org.sabbir.edutrace.ui.NotificationsBottomSheet sheet = new org.sabbir.edutrace.ui.NotificationsBottomSheet();
+        sheet.setOnDismissListener(this::refreshNotificationBadge);
+        sheet.show(getSupportFragmentManager(), "NotificationsBottomSheet");
+    }
+
+    private void refreshNotificationBadge() {
+        if (!CloudDbManager.isLoggedIn(this)) {
+            if (tvNotificationBadge != null) tvNotificationBadge.setVisibility(View.GONE);
+            return;
+        }
+        CloudDbManager.fetchUnreadNotificationCount(this, new CloudDbManager.CountCallback() {
+            @Override
+            public void onSuccess(int count) {
+                if (tvNotificationBadge != null) {
+                    if (count > 0) {
+                        tvNotificationBadge.setText(count > 99 ? "99+" : String.valueOf(count));
+                        tvNotificationBadge.setVisibility(View.VISIBLE);
+                    } else {
+                        tvNotificationBadge.setVisibility(View.GONE);
+                    }
+                }
+            }
+
+            @Override
+            public void onError(String message) {
+                if (tvNotificationBadge != null) tvNotificationBadge.setVisibility(View.GONE);
+            }
+        });
+    }
+
+    private void checkTimerMatchCelebration() {
+        if (!CloudDbManager.isLoggedIn(this)) return;
+        CloudDbManager.checkTimerMatch(this, new CloudDbManager.TimerMatchCallback() {
+            @Override
+            public void onSuccess(org.sabbir.edutrace.data.models.TimerMatchStatus status) {
+                if (status != null && status.matched) {
+                    long now = System.currentTimeMillis();
+                    long lastCelebrated = getSharedPreferences("TimerMatchPrefs", MODE_PRIVATE)
+                            .getLong("last_celebration_date", 0);
+                    if (now - lastCelebrated > 12 * 3600 * 1000L) {
+                        getSharedPreferences("TimerMatchPrefs", MODE_PRIVATE)
+                                .edit()
+                                .putLong("last_celebration_date", now)
+                                .apply();
+                        showCelebrationDialog(status);
+                    }
+                }
+            }
+
+            @Override
+            public void onError(String message) {}
+        });
+    }
+
+    private void showCelebrationDialog(org.sabbir.edutrace.data.models.TimerMatchStatus status) {
+        if (isFinishing() || isDestroyed()) return;
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_timer_match_celebration, null);
+        TextView tvMsg = view.findViewById(R.id.tvTimerMatchMessage);
+        TextView tvPct = view.findViewById(R.id.tvMatchPercentage);
+        com.google.android.material.button.MaterialButton btnDismiss = view.findViewById(R.id.btnDismissCelebration);
+
+        if (status.message != null && !status.message.isEmpty()) {
+            tvMsg.setText(status.message);
+        }
+        if (status.percentage > 0) {
+            tvPct.setText(String.format(java.util.Locale.getDefault(), "%.0f%% TARGET MATCHED", status.percentage));
+        }
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(view)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        btnDismiss.setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         refreshStats();
         updateCloudSyncBanner();
         CloudDbManager.autoSyncOnStartup(this);
+        refreshNotificationBadge();
+        checkTimerMatchCelebration();
+        CloudDbManager.recordDeviceActivity(this, "app_open");
         updateHandler.postDelayed(updateRunnable, 0);
     }
 

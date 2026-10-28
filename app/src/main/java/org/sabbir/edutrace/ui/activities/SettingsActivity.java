@@ -144,6 +144,8 @@ public class SettingsActivity extends AppCompatActivity {
                     .show();
         });
 
+        binding.btnChangePassword.setOnClickListener(v -> showChangePasswordDialog());
+
         boolean autoBackup = prefs.getBoolean("cloud_auto_backup_enabled", true);
         binding.switchAutoCloudBackup.setChecked(autoBackup);
         binding.switchAutoCloudBackup.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -187,6 +189,68 @@ public class SettingsActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void showChangePasswordDialog() {
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_change_password, null);
+        com.google.android.material.textfield.TextInputEditText etCurrent = dialogView.findViewById(R.id.etCurrentPassword);
+        com.google.android.material.textfield.TextInputEditText etNew = dialogView.findViewById(R.id.etNewPassword);
+        com.google.android.material.textfield.TextInputEditText etConfirm = dialogView.findViewById(R.id.etConfirmPassword);
+        TextView tvError = dialogView.findViewById(R.id.tvChangePasswordError);
+        ProgressBar progress = dialogView.findViewById(R.id.progressChangePassword);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .setPositiveButton("Update Password", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(btn -> {
+                String current = etCurrent.getText() != null ? etCurrent.getText().toString().trim() : "";
+                String newPwd = etNew.getText() != null ? etNew.getText().toString().trim() : "";
+                String confirm = etConfirm.getText() != null ? etConfirm.getText().toString().trim() : "";
+
+                if (current.isEmpty()) {
+                    tvError.setText("Please enter your current password.");
+                    tvError.setVisibility(View.VISIBLE);
+                    return;
+                }
+                if (newPwd.length() < 6) {
+                    tvError.setText("New password must be at least 6 characters.");
+                    tvError.setVisibility(View.VISIBLE);
+                    return;
+                }
+                if (!newPwd.equals(confirm)) {
+                    tvError.setText("New passwords do not match.");
+                    tvError.setVisibility(View.VISIBLE);
+                    return;
+                }
+
+                tvError.setVisibility(View.GONE);
+                progress.setVisibility(View.VISIBLE);
+                btn.setEnabled(false);
+
+                CloudDbManager.changePassword(this, current, newPwd, new CloudDbManager.ActionCallback() {
+                    @Override
+                    public void onSuccess(String message) {
+                        progress.setVisibility(View.GONE);
+                        dialog.dismiss();
+                        Toast.makeText(SettingsActivity.this, message, Toast.LENGTH_LONG).show();
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        progress.setVisibility(View.GONE);
+                        btn.setEnabled(true);
+                        tvError.setText(error != null ? error : "Failed to change password.");
+                        tvError.setVisibility(View.VISIBLE);
+                    }
+                });
+            });
+        });
+
+        dialog.show();
     }
 
     private static class CloudProgressViewHolder {
