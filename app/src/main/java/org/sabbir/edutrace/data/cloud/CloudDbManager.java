@@ -281,6 +281,36 @@ public class CloudDbManager {
                                 Log.d(TAG, "Live server study session started: #" + serverSessId);
                             }
                         }
+                    } else if (startRes.statusCode == 409) {
+                        // Previous session remained open on server. Fetch active session, complete it, and retry start
+                        ApiResponse activeRes = sendApiRequest(context, "/sessions/active", "GET", null, token);
+                        if (activeRes.isSuccess() && activeRes.json != null) {
+                            JSONObject activeSess = activeRes.json.optJSONObject("session");
+                            if (activeSess != null) {
+                                int staleId = activeSess.optInt("id", -1);
+                                if (staleId != -1) {
+                                    JSONObject stopPayload = new JSONObject();
+                                    stopPayload.put("status", "completed");
+                                    stopPayload.put("notes", "Auto-closed previous session upon starting new session");
+                                    sendApiRequest(context, "/sessions/" + staleId + "/stop", "POST", stopPayload, token);
+                                }
+                            }
+                        }
+                        // Retry starting the session
+                        ApiResponse retryRes = sendApiRequest(context, "/sessions/start", "POST", payload, token);
+                        if (retryRes.isSuccess() && retryRes.json != null) {
+                            JSONObject sess = retryRes.json.optJSONObject("session");
+                            if (sess != null) {
+                                int serverSessId = sess.optInt("id", -1);
+                                if (serverSessId != -1) {
+                                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                                            .edit()
+                                            .putInt("cloud_active_server_session_id", serverSessId)
+                                            .apply();
+                                    Log.d(TAG, "Live server study session started on retry: #" + serverSessId);
+                                }
+                            }
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -324,12 +354,12 @@ public class CloudDbManager {
                         }
                     }
                     if (callback != null) mainHandler.post(() -> callback.onSuccess("Heartbeat synced"));
-                } else if (res.statusCode == 404 || res.statusCode == 409) {
+                } else if (res.statusCode == 404 || res.statusCode == 409 || res.statusCode == 410 || res.statusCode == 400) {
                     context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
                             .edit()
                             .remove("cloud_active_server_session_id")
                             .apply();
-                    if (callback != null) mainHandler.post(() -> callback.onError("Session expired on server"));
+                    if (callback != null) mainHandler.post(() -> callback.onError("Session expired or completed on server"));
                 }
             } catch (Exception e) {
                 // Heartbeat offline - mobile data may be off
@@ -351,6 +381,13 @@ public class CloudDbManager {
         final String token = getAccessToken(context);
         final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
                 .getInt("cloud_active_server_session_id", -1);
+
+        // Immediately remove active session ID so subsequent actions or offline failures never reuse it
+        context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .edit()
+                .remove("cloud_active_server_session_id")
+                .apply();
+
         if (serverSessId == -1) return;
 
         cloudExecutor.execute(() -> {
@@ -362,10 +399,6 @@ public class CloudDbManager {
                     payload.put("duration_seconds", Math.max(0, elapsedMillis / 1000));
                 }
                 sendApiRequest(context, "/sessions/" + serverSessId + "/stop", "POST", payload, token);
-                context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
-                        .edit()
-                        .remove("cloud_active_server_session_id")
-                        .apply();
                 Log.d(TAG, "Live server study session completed: #" + serverSessId);
             } catch (Exception e) {
                 Log.e(TAG, "Failed to stop live server session: " + e.getMessage());

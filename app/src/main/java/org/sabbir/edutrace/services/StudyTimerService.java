@@ -27,7 +27,7 @@ public class StudyTimerService extends Service {
     private String subjectName;
     private long lastScreenOffTime = 0;
     private long lastHeartbeatTime = 0;
-    private static final long INACTIVITY_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
+    private static final long INACTIVITY_THRESHOLD = 20 * 60 * 1000; // 20 minutes screen-off auto-pause
     private static final long HEARTBEAT_INTERVAL = 60 * 1000; // 60 seconds live tick
     private int originalRingVolume = -1;
     private int originalNotificationVolume = -1;
@@ -48,14 +48,26 @@ public class StudyTimerService extends Service {
         public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
                 lastScreenOffTime = System.currentTimeMillis();
+                getSharedPreferences("StudyTimerServicePrefs", MODE_PRIVATE)
+                        .edit()
+                        .putLong("last_screen_off_time", lastScreenOffTime)
+                        .apply();
             } else if (Intent.ACTION_SCREEN_ON.equals(intent.getAction())) {
-                if (lastScreenOffTime > 0 && (System.currentTimeMillis() - lastScreenOffTime) > INACTIVITY_THRESHOLD) {
-                    // Auto-pause if screen was off for too long
+                long savedOffTime = getSharedPreferences("StudyTimerServicePrefs", MODE_PRIVATE)
+                        .getLong("last_screen_off_time", lastScreenOffTime);
+                long offTime = (savedOffTime > 0) ? savedOffTime : lastScreenOffTime;
+
+                if (offTime > 0 && (System.currentTimeMillis() - offTime) > INACTIVITY_THRESHOLD) {
+                    // Auto-pause if screen was off for too long to prevent false multi-hour session
                     if (sessionManager != null && sessionManager.isActive() && !sessionManager.isPaused()) {
-                        sessionManager.setPaused(true, lastScreenOffTime, sessionManager.getTotalBreakTime());
+                        sessionManager.setPaused(true, offTime, sessionManager.getTotalBreakTime());
                     }
                 }
                 lastScreenOffTime = 0;
+                getSharedPreferences("StudyTimerServicePrefs", MODE_PRIVATE)
+                        .edit()
+                        .remove("last_screen_off_time")
+                        .apply();
             }
         }
     };
@@ -64,20 +76,23 @@ public class StudyTimerService extends Service {
         @Override
         public void run() {
             if (sessionManager != null && sessionManager.isActive()) {
+                long now = System.currentTimeMillis();
+                sessionManager.recordTick(now);
                 long elapsed = sessionManager.getActiveSessionElapsed();
                 boolean isPaused = sessionManager.isPaused();
 
+                int seconds = (int) (elapsed / 1000);
+                int minutes = seconds / 60;
+                int hours = minutes / 60;
+                String timeText = String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60);
+
                 if (!isPaused) {
-                    int seconds = (int) (elapsed / 1000);
-                    int minutes = seconds / 60;
-                    int hours = minutes / 60;
-                    
-                    String timeText = String.format("%02d:%02d:%02d", hours, minutes % 60, seconds % 60);
                     updateNotification("Focusing on " + subjectName, "Elapsed Time: " + timeText);
+                } else {
+                    updateNotification("Paused: " + subjectName, "Active Time: " + timeText + " (On Break)");
                 }
 
                 // Live heartbeat tick mechanism: sends periodic heartbeat every 60s
-                long now = System.currentTimeMillis();
                 if (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL) {
                     lastHeartbeatTime = now;
                     org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(getApplicationContext(), elapsed, isPaused);

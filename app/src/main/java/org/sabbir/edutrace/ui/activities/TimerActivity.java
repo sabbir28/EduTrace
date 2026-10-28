@@ -63,6 +63,8 @@ public class TimerActivity extends AppCompatActivity {
         @Override
         public void run() {
             if (!isPaused) {
+                long now = System.currentTimeMillis();
+                sessionManager.recordTick(now);
                 long sessionMillis = sessionManager.getActiveSessionElapsed();
                 long totalTodayMillis = sessionMillis + thisSubjectTodayBeforeNow;
                 
@@ -171,6 +173,9 @@ public class TimerActivity extends AppCompatActivity {
         sessionManager = new org.sabbir.edutrace.utils.SessionManager(this);
         
         if (sessionManager.isActive() && sessionManager.getSubjectId() == subjectId) {
+            if (sessionManager.isStaleOrInterrupted()) {
+                sessionManager.setPaused(true, sessionManager.getLastTickTime(), sessionManager.getTotalBreakTime());
+            }
             startTime = sessionManager.getStartTime();
             totalBreakTime = sessionManager.getTotalBreakTime();
             distractionCount = sessionManager.getDistractionCount();
@@ -361,8 +366,9 @@ public class TimerActivity extends AppCompatActivity {
     private void saveSession() {
         disableDND();
         NotificationHelper.clearFocusNotification(this);
-        long endTime = System.currentTimeMillis();
-        long sessionMillis = sessionManager != null ? sessionManager.getActiveSessionElapsed() : Math.max(0, endTime - startTime - totalBreakTime);
+        long now = System.currentTimeMillis();
+        long sessionMillis = sessionManager != null ? sessionManager.getActiveSessionElapsed() : Math.max(0, now - startTime - totalBreakTime);
+        long endTime = (sessionMillis > 0) ? Math.min(now, startTime + sessionMillis + totalBreakTime) : now;
         StudySession session = new StudySession(subjectId, startTime, endTime, totalBreakTime, distractionCount, "");
         new StudyRepository(getApplication()).insertSession(session);
         org.sabbir.edutrace.data.cloud.CloudDbManager.stopLiveServerSession(this, sessionMillis, "Completed study session for " + subjectName);
