@@ -380,16 +380,25 @@ public class TimerActivity extends AppCompatActivity {
     }
 
     private void checkNotificationPolicyAccess() {
-        if (!notificationManager.isNotificationPolicyAccessGranted()) {
-            new AlertDialog.Builder(this)
-                .setTitle("Distraction-Free Mode")
-                .setMessage("To automatically block WhatsApp/FB notifications, EduTrace needs 'Do Not Disturb' access. Please enable it in the next screen.")
-                .setPositiveButton("Grant Access", (dialog, which) -> {
-                    Intent intent = new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
-                    startActivity(intent);
-                })
-                .setNegativeButton("Skip", null)
-                .show();
+        if (notificationManager == null) return;
+        try {
+            if (!notificationManager.isNotificationPolicyAccessGranted()) {
+                new AlertDialog.Builder(this)
+                    .setTitle("Distraction-Free Mode")
+                    .setMessage("To automatically block WhatsApp/FB notifications, EduTrace needs 'Do Not Disturb' access. Please enable it in the next screen.")
+                    .setPositiveButton("Grant Access", (dialog, which) -> {
+                        try {
+                            Intent intent = new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS);
+                            startActivity(intent);
+                        } catch (Exception e) {
+                            android.widget.Toast.makeText(this, "Unable to open DND settings", android.widget.Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNegativeButton("Skip", null)
+                    .show();
+            }
+        } catch (Exception e) {
+            android.util.Log.w("TimerActivity", "Failed checking notification policy access: " + e.getMessage());
         }
     }
 
@@ -403,14 +412,26 @@ public class TimerActivity extends AppCompatActivity {
     }
 
     private void enableDND() {
-        if (notificationManager.isNotificationPolicyAccessGranted()) {
-            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+        try {
+            if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+            }
+        } catch (SecurityException se) {
+            android.util.Log.w("TimerActivity", "SecurityException enabling DND: " + se.getMessage());
+        } catch (Exception e) {
+            android.util.Log.w("TimerActivity", "Failed to enable DND: " + e.getMessage());
         }
     }
 
     private void disableDND() {
-        if (notificationManager.isNotificationPolicyAccessGranted()) {
-            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+        try {
+            if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+            }
+        } catch (SecurityException se) {
+            android.util.Log.w("TimerActivity", "SecurityException disabling DND: " + se.getMessage());
+        } catch (Exception e) {
+            android.util.Log.w("TimerActivity", "Failed to disable DND: " + e.getMessage());
         }
     }
 

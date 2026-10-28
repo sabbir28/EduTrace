@@ -29,6 +29,9 @@ public class StudyTimerService extends Service {
     private long lastHeartbeatTime = 0;
     private static final long INACTIVITY_THRESHOLD = 2 * 60 * 60 * 1000; // 2 hours
     private static final long HEARTBEAT_INTERVAL = 60 * 1000; // 60 seconds live tick
+    private int originalRingVolume = -1;
+    private int originalNotificationVolume = -1;
+    private int originalSystemVolume = -1;
 
     private Runnable wardenRunnable = new Runnable() {
         @Override
@@ -104,14 +107,26 @@ public class StudyTimerService extends Service {
     }
 
     private void enableDND() {
-        if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
-            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+        try {
+            if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+            }
+        } catch (SecurityException se) {
+            android.util.Log.w("StudyTimerService", "SecurityException while enabling DND: " + se.getMessage());
+        } catch (Exception e) {
+            android.util.Log.w("StudyTimerService", "Failed to enable DND: " + e.getMessage());
         }
     }
 
     private void disableDND() {
-        if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
-            notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+        try {
+            if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+            }
+        } catch (SecurityException se) {
+            android.util.Log.w("StudyTimerService", "SecurityException while disabling DND: " + se.getMessage());
+        } catch (Exception e) {
+            android.util.Log.w("StudyTimerService", "Failed to disable DND: " + e.getMessage());
         }
     }
 
@@ -154,13 +169,29 @@ public class StudyTimerService extends Service {
     }
 
     private void enforceSilence() {
-        // Automatically mute media, ring, and alarms
+        android.content.SharedPreferences prefs = getSharedPreferences("Settings", Context.MODE_PRIVATE);
+        boolean libraryMode = prefs.getBoolean("library_mode", false);
+        if (!libraryMode) {
+            return;
+        }
+
         if (audioManager != null) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0);
-            audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0);
-            audioManager.setStreamVolume(AudioManager.STREAM_ALARM, 0, 0);
-            audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0);
-            audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
+            try {
+                if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                    if (originalRingVolume == -1) {
+                        originalRingVolume = audioManager.getStreamVolume(AudioManager.STREAM_RING);
+                        originalNotificationVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION);
+                        originalSystemVolume = audioManager.getStreamVolume(AudioManager.STREAM_SYSTEM);
+                    }
+                    audioManager.setStreamVolume(AudioManager.STREAM_RING, 0, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, 0, 0);
+                }
+            } catch (SecurityException se) {
+                android.util.Log.w("StudyTimerService", "SecurityException while enforcing silence: " + se.getMessage());
+            } catch (Exception e) {
+                android.util.Log.w("StudyTimerService", "Failed to enforce silence: " + e.getMessage());
+            }
         }
     }
 
@@ -172,6 +203,19 @@ public class StudyTimerService extends Service {
         timerHandler.removeCallbacks(timerRunnable);
         unregisterReceiver(screenReceiver);
         disableDND();
+
+        // Restore original audio volumes if they were muted during library mode
+        if (originalRingVolume != -1 && audioManager != null) {
+            try {
+                if (notificationManager != null && notificationManager.isNotificationPolicyAccessGranted()) {
+                    audioManager.setStreamVolume(AudioManager.STREAM_RING, originalRingVolume, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, originalNotificationVolume, 0);
+                    audioManager.setStreamVolume(AudioManager.STREAM_SYSTEM, originalSystemVolume, 0);
+                }
+            } catch (SecurityException se) {
+                android.util.Log.w("StudyTimerService", "SecurityException restoring volume: " + se.getMessage());
+            } catch (Exception ignored) {}
+        }
     }
 
     @Nullable
