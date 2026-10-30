@@ -40,6 +40,9 @@ public class StudyRepository {
     private void triggerAutoCloudSync() {
         if (mContext != null) {
             org.sabbir.edutrace.utils.LocalVaultManager.autoSaveVault(mContext);
+            if (org.sabbir.edutrace.data.cloud.CloudDbManager.isLoggedIn(mContext)) {
+                org.sabbir.edutrace.data.cloud.CloudDbManager.syncCurriculum(mContext);
+            }
         }
     }
 

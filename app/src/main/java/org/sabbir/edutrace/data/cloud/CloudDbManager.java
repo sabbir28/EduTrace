@@ -256,6 +256,14 @@ public class CloudDbManager {
         CloudSyncManager.autoSyncOnStartup(context);
     }
 
+    public static void syncCurriculum(Context context, ActionCallback callback) {
+        CloudSyncManager.syncCurriculum(context, callback);
+    }
+
+    public static void syncCurriculum(Context context) {
+        CloudSyncManager.syncCurriculum(context, null);
+    }
+
     public static void backupData(Context context, SyncProgressCallback callback) {
         CloudSyncManager.backupData(context, callback);
     }

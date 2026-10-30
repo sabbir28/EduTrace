@@ -14,15 +14,21 @@ import org.sabbir.edutrace.data.models.Subject;
 import org.sabbir.edutrace.utils.LocalVaultManager;
 
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Manages bulk cloud synchronization: backing up local Room database records
- * to EduTrace Server, restoring remote cloud history, and debounced background
- * startup synchronization.
+ * Manages atomic cloud synchronization for academic degrees and subjects:
+ * pulls curriculum and history from server, deduplicates degrees/subjects by name
+ * to prevent double/duplicate entries, syncs only genuinely missing items,
+ * and strictly guarantees that NO local study time or session durations are uploaded via sync.
  */
 public class CloudSyncManager {
     private static final String TAG = CloudApiClient.TAG;
@@ -44,8 +50,8 @@ public class CloudSyncManager {
 
     /**
      * Completely automatic startup sync: pulls down user's data from cloud in background,
-     * updates Room database seamlessly, and backs up any offline activity without disrupting
-     * user experience or freezing the UI.
+     * deduplicates any double degrees/subjects, syncs only missing curriculum (zero local time sent),
+     * and refreshes notifications, rankings, and user session.
      */
     public static void autoSyncOnStartup(Context context) {
         if (context == null || !CloudAuthManager.isLoggedIn(context)) return;
@@ -63,19 +69,22 @@ public class CloudSyncManager {
             try {
                 Log.d(TAG, "Starting automatic background data load on app open...");
 
-                // 1. Pull latest academic data from cloud (/sync/restore) & update Room DB
+                // 1. Pull latest academic data from cloud (/sync/restore), de-duplicate & update Room DB
                 doRestoreData(appContext, null);
 
-                // 2. Refresh user profile session (/auth/me)
+                // 2. Sync only missing degrees/subjects to server (strictly ZERO session time sent)
+                doSyncCurriculum(appContext, null);
+
+                // 3. Refresh user profile session (/auth/me)
                 CloudAuthManager.doSyncUserProfile(appContext);
 
-                // 3. Prefetch notifications cache & unread count (/notifications)
+                // 4. Prefetch notifications cache & unread count (/notifications)
                 CloudRankingsManager.doPrefetchNotifications(appContext);
 
-                // 4. Prefetch scholar rankings (/rankings/me & /rankings)
+                // 5. Prefetch scholar rankings (/rankings/me & /rankings)
                 CloudRankingsManager.doPrefetchRankings(appContext);
 
-                // 5. Record app open telemetry
+                // 6. Record app open telemetry
                 CloudRankingsManager.recordDeviceActivity(appContext, "app_open");
 
                 Log.d(TAG, "Automatic background data load on app open completed.");
@@ -86,6 +95,121 @@ public class CloudSyncManager {
                 sIsAutoSyncing.set(false);
             }
         });
+    }
+
+    /**
+     * Sync curriculum structure (Degrees & Subjects) only:
+     * Checks what degrees/subjects already exist on the server.
+     * Only sends items that are truly MISSING on the server to prevent duplicate/double names.
+     * NEVER sends any local study time or session durations.
+     */
+    public static void syncCurriculum(Context context, CloudDbManager.ActionCallback callback) {
+        if (!CloudAuthManager.isLoggedIn(context)) {
+            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Sign in required."));
+            return;
+        }
+        CloudApiClient.cloudExecutor.execute(() -> doSyncCurriculum(context, callback));
+    }
+
+    public static void syncCurriculum(Context context) {
+        syncCurriculum(context, null);
+    }
+
+    public static boolean doSyncCurriculum(Context context, CloudDbManager.ActionCallback callback) {
+        if (!CloudAuthManager.isLoggedIn(context)) return false;
+        final String token = CloudAuthManager.getAccessToken(context);
+
+        try {
+            StudyDatabase localDb = StudyDatabase.getDatabase(context);
+            StudyDao dao = localDb.studyDao();
+
+            List<Degree> localDegrees = dao.getDegreesListSync();
+            List<Subject> localSubjects = dao.getSubjectsListSync();
+
+            // 1. Query server to inspect existing degrees (case-insensitive name check)
+            CloudApiClient.ApiResponse serverDegRes = CloudApiClient.sendApiRequest(context, "/degrees", "GET", null, token);
+            Set<String> serverDegreeNames = new HashSet<>();
+            if (serverDegRes.isSuccess() && serverDegRes.json != null) {
+                JSONArray items = serverDegRes.json.optJSONArray("items");
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject item = items.getJSONObject(i);
+                        String n = item.optString("name", "").trim().toLowerCase(Locale.ROOT);
+                        if (!n.isEmpty()) serverDegreeNames.add(n);
+                    }
+                }
+            }
+
+            // 2. Query server to inspect existing subjects (case-insensitive name check)
+            CloudApiClient.ApiResponse serverSubRes = CloudApiClient.sendApiRequest(context, "/subjects", "GET", null, token);
+            Set<String> serverSubjectNames = new HashSet<>();
+            if (serverSubRes.isSuccess() && serverSubRes.json != null) {
+                JSONArray items = serverSubRes.json.optJSONArray("items");
+                if (items != null) {
+                    for (int i = 0; i < items.length(); i++) {
+                        JSONObject item = items.getJSONObject(i);
+                        String n = item.optString("name", "").trim().toLowerCase(Locale.ROOT);
+                        if (!n.isEmpty()) serverSubjectNames.add(n);
+                    }
+                }
+            }
+
+            // 3. Collect only degrees that are TRULY MISSING on the server (prevents double degree creation)
+            JSONArray missingDegreesArr = new JSONArray();
+            Set<String> addedDegKeys = new HashSet<>();
+            for (Degree d : localDegrees) {
+                if (d.name == null || d.name.trim().isEmpty()) continue;
+                String key = d.name.trim().toLowerCase(Locale.ROOT);
+                if (!serverDegreeNames.contains(key) && !addedDegKeys.contains(key)) {
+                    JSONObject dObj = new JSONObject();
+                    dObj.put("local_id", d.id);
+                    dObj.put("name", d.name.trim());
+                    dObj.put("color_hex", d.colorHex != null ? d.colorHex : "#3B82F6");
+                    missingDegreesArr.put(dObj);
+                    addedDegKeys.add(key);
+                }
+            }
+
+            // 4. Collect only subjects that are TRULY MISSING on the server
+            JSONArray missingSubjectsArr = new JSONArray();
+            Set<String> addedSubKeys = new HashSet<>();
+            for (Subject s : localSubjects) {
+                if (s.name == null || s.name.trim().isEmpty()) continue;
+                String key = s.name.trim().toLowerCase(Locale.ROOT);
+                if (!serverSubjectNames.contains(key) && !addedSubKeys.contains(key)) {
+                    JSONObject sObj = new JSONObject();
+                    sObj.put("local_id", s.id);
+                    sObj.put("degree_local_id", s.degreeId);
+                    sObj.put("name", s.name.trim());
+                    sObj.put("color_hex", s.colorHex != null ? s.colorHex : "#2563EB");
+                    missingSubjectsArr.put(sObj);
+                    addedSubKeys.add(key);
+                }
+            }
+
+            // 5. If missing items exist, send only the missing curriculum with ZERO study sessions/time
+            if (missingDegreesArr.length() > 0 || missingSubjectsArr.length() > 0) {
+                JSONObject payload = new JSONObject();
+                payload.put("degrees", missingDegreesArr);
+                payload.put("subjects", missingSubjectsArr);
+                payload.put("sessions", new JSONArray()); // Strictly NO local study time sent!
+
+                CloudApiClient.ApiResponse res = CloudApiClient.sendApiRequest(context, "/sync/backup", "POST", payload, token);
+                if (res.isSuccess()) {
+                    Log.d(TAG, "Synced missing curriculum: " + missingDegreesArr.length() + " degrees & " + missingSubjectsArr.length() + " subjects (zero study time).");
+                }
+            } else {
+                Log.d(TAG, "All degrees and subjects already exist on server. Zero duplicate requests sent.");
+            }
+
+            LocalVaultManager.autoSaveVault(context);
+            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onSuccess("Curriculum synced."));
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Curriculum sync notice: " + e.getMessage());
+            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError(e.getMessage()));
+            return false;
+        }
     }
 
     public static void backupData(Context context, CloudDbManager.SyncProgressCallback callback) {
@@ -126,8 +250,11 @@ public class CloudSyncManager {
         try {
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Securing local study records into Local Safe Vault..."));
 
-            // Safely archive local study history on device (Local Safe Vault)
+            // 1. Safely archive local study history on device (Local Safe Vault)
             LocalVaultManager.autoSaveVault(context);
+
+            // 2. Sync missing degrees and subjects if any (with ZERO study time)
+            doSyncCurriculum(context, null);
 
             long now = System.currentTimeMillis();
             if (context != null) {
@@ -137,8 +264,7 @@ public class CloudSyncManager {
                         .apply();
             }
 
-            // Sync is strictly pull-only (Server -> Client). Never send time or data updates to server.
-            String successMsg = "Local data safely secured in Local Vault. Cloud sync is in download-only mode from server.";
+            String successMsg = "Local data safely secured in Local Vault. Curriculum synced (no local time sent).";
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onSuccess(successMsg));
             return true;
         } catch (Exception e) {
@@ -177,6 +303,10 @@ public class CloudSyncManager {
         restoreData(context, (CloudDbManager.SyncProgressCallback) null);
     }
 
+    /**
+     * Pulls degrees, subjects, and study sessions from the server.
+     * De-duplicates degrees and subjects by name so degree names are never doubled/duplicated.
+     */
     public static boolean doRestoreData(Context context, CloudDbManager.SyncProgressCallback callback) {
         if (!CloudAuthManager.isLoggedIn(context)) {
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Please sign in to restore data from EduTrace Server."));
@@ -197,79 +327,157 @@ public class CloudSyncManager {
                 int restoredSubjects = 0;
                 int restoredSessions = 0;
 
-                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Restoring academic degrees & subjects..."));
+                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Restoring & deduplicating degrees and subjects..."));
 
-                // 1. Degrees
+                // Step A: Inspect existing local degrees and merge any pre-existing duplicate names
+                List<Degree> localDegrees = dao.getDegreesListSync();
+                Map<String, Degree> localDegreeByName = new HashMap<>();
+                List<Subject> allLocalSubjects = dao.getSubjectsListSync();
+
+                for (Degree ld : localDegrees) {
+                    if (ld.name == null) continue;
+                    String key = ld.name.trim().toLowerCase(Locale.ROOT);
+                    if (!localDegreeByName.containsKey(key)) {
+                        localDegreeByName.put(key, ld);
+                    } else {
+                        // Pre-existing local duplicate degree found! Merge its subjects into primary degree and remove duplicate
+                        Degree primary = localDegreeByName.get(key);
+                        for (Subject s : allLocalSubjects) {
+                            if (s.degreeId == ld.id) {
+                                s.degreeId = primary.id;
+                                dao.updateSubject(s);
+                            }
+                        }
+                        dao.deleteDegree(ld);
+                    }
+                }
+
+                // Step B: Process server degrees with strict name-based de-duplication
+                Map<Integer, Integer> serverToLocalDegreeId = new HashMap<>();
                 JSONArray degArr = res.json.optJSONArray("degrees");
                 if (degArr != null) {
                     for (int i = 0; i < degArr.length(); i++) {
                         try {
                             JSONObject d = degArr.getJSONObject(i);
-                            int localId = d.has("local_id") ? d.getInt("local_id") : d.optInt("id", 0);
-                            String name = d.optString("name", "Degree " + localId);
+                            int serverDegId = d.has("id") ? d.getInt("id") : d.optInt("local_id", 0);
+                            String name = d.optString("name", "Degree " + serverDegId).trim();
                             String color = d.optString("color_hex", d.optString("color", "#3B82F6"));
-                            Degree degree = new Degree(name, color);
-                            degree.id = localId;
-                            dao.insertOrReplaceDegree(degree);
-                            restoredDegrees++;
+                            String key = name.toLowerCase(Locale.ROOT);
+
+                            if (localDegreeByName.containsKey(key)) {
+                                // Match found! Reuse existing local degree ID, NEVER create a double entry!
+                                Degree existing = localDegreeByName.get(key);
+                                serverToLocalDegreeId.put(serverDegId, existing.id);
+                                if (color != null && !color.equals(existing.colorHex)) {
+                                    existing.colorHex = color;
+                                    dao.updateDegree(existing);
+                                }
+                                restoredDegrees++;
+                            } else {
+                                // Truly missing locally: insert cleanly
+                                Degree newDeg = new Degree(name, color);
+                                dao.insertDegree(newDeg);
+                                List<Degree> refreshed = dao.getDegreesListSync();
+                                Degree created = null;
+                                for (Degree r : refreshed) {
+                                    if (r.name != null && r.name.trim().equalsIgnoreCase(name)) {
+                                        created = r;
+                                        break;
+                                    }
+                                }
+                                int localId = (created != null) ? created.id : serverDegId;
+                                serverToLocalDegreeId.put(serverDegId, localId);
+                                localDegreeByName.put(key, created != null ? created : newDeg);
+                                restoredDegrees++;
+                            }
                         } catch (Throwable t) {
                             Log.w(TAG, "Error restoring degree: " + t.getMessage());
                         }
                     }
                 }
 
-                // 2. Subjects
+                // Step C: Process server subjects with strict name and degree de-duplication
+                List<Subject> refreshedLocalSubjects = dao.getSubjectsListSync();
                 JSONArray subArr = res.json.optJSONArray("subjects");
                 if (subArr != null) {
                     for (int i = 0; i < subArr.length(); i++) {
                         try {
                             JSONObject s = subArr.getJSONObject(i);
-                            int localId = s.has("local_id") ? s.getInt("local_id") : s.optInt("id", 0);
-                            int degId = s.has("degree_local_id") ? s.getInt("degree_local_id") : s.optInt("degree_id", 1);
-                            String name = s.optString("name", "Subject " + localId);
+                            int serverSubId = s.has("id") ? s.getInt("id") : s.optInt("local_id", 0);
+                            int serverDegId = s.has("degree_local_id") ? s.getInt("degree_local_id") : s.optInt("degree_id", 1);
+                            int targetDegId = serverToLocalDegreeId.containsKey(serverDegId)
+                                    ? serverToLocalDegreeId.get(serverDegId)
+                                    : (localDegreeByName.values().isEmpty() ? 1 : localDegreeByName.values().iterator().next().id);
+
+                            String name = s.optString("name", "Subject " + serverSubId).trim();
                             String color = s.optString("color_hex", s.optString("color", "#2563EB"));
-                            Subject subject = new Subject(degId, name, color);
-                            subject.id = localId;
-                            dao.insertOrReplaceSubject(subject);
-                            restoredSubjects++;
+
+                            Subject existingSub = null;
+                            for (Subject sub : refreshedLocalSubjects) {
+                                if (sub.degreeId == targetDegId && sub.name != null && sub.name.trim().equalsIgnoreCase(name)) {
+                                    existingSub = sub;
+                                    break;
+                                }
+                            }
+
+                            if (existingSub != null) {
+                                // Already exists locally! Reuse existing, do NOT duplicate
+                                if (color != null && !color.equals(existingSub.colorHex)) {
+                                    existingSub.colorHex = color;
+                                    dao.updateSubject(existingSub);
+                                }
+                                restoredSubjects++;
+                            } else {
+                                // Truly missing locally: insert
+                                Subject newSub = new Subject(targetDegId, name, color);
+                                dao.insertSubject(newSub);
+                                refreshedLocalSubjects.add(newSub);
+                                restoredSubjects++;
+                            }
                         } catch (Throwable t) {
                             Log.w(TAG, "Error restoring subject: " + t.getMessage());
                         }
                     }
                 }
 
-                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Restoring study session history..."));
+                // Step D: Pull study sessions without duplicate records
+                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Restoring verified study sessions..."));
 
-                // 3. Sessions
                 JSONArray sessArr = res.json.optJSONArray("sessions");
                 if (sessArr != null) {
+                    List<StudySession> existingSessions = dao.getSessionsListSync();
                     for (int i = 0; i < sessArr.length(); i++) {
                         try {
                             JSONObject sess = sessArr.getJSONObject(i);
-                            int localId = sess.has("local_id") ? sess.getInt("local_id") : sess.optInt("id", 0);
                             int subId = sess.has("subject_local_id") ? sess.getInt("subject_local_id") : sess.optInt("subject_id", 1);
                             long startMs = sess.optLong("start_timestamp", 0);
-                            if (startMs <= 0) {
-                                startMs = parseIsoOrEpoch(sess.optString("started_at", ""));
-                            }
+                            if (startMs <= 0) startMs = parseIsoOrEpoch(sess.optString("started_at", ""));
                             long endMs = sess.optLong("end_timestamp", 0);
-                            if (endMs <= 0) {
-                                endMs = parseIsoOrEpoch(sess.optString("ended_at", ""));
-                            }
+                            if (endMs <= 0) endMs = parseIsoOrEpoch(sess.optString("ended_at", ""));
                             if (startMs <= 0) startMs = System.currentTimeMillis();
                             if (endMs <= 0) endMs = startMs;
 
-                            StudySession session = new StudySession(
-                                    subId,
-                                    startMs,
-                                    endMs,
-                                    sess.optLong("break_duration_millis", 0),
-                                    sess.optInt("distraction_count", 0),
-                                    sess.optString("notes", "")
-                            );
-                            session.id = localId;
-                            dao.insertOrReplaceSession(session);
-                            restoredSessions++;
+                            boolean exists = false;
+                            for (StudySession es : existingSessions) {
+                                if (es.subjectId == subId && Math.abs(es.startTimestamp - startMs) < 1500) {
+                                    exists = true;
+                                    break;
+                                }
+                            }
+
+                            if (!exists) {
+                                StudySession session = new StudySession(
+                                        subId,
+                                        startMs,
+                                        endMs,
+                                        sess.optLong("break_duration_millis", 0),
+                                        sess.optInt("distraction_count", 0),
+                                        sess.optString("notes", "")
+                                );
+                                dao.insertSession(session);
+                                existingSessions.add(session);
+                                restoredSessions++;
+                            }
                         } catch (Throwable t) {
                             Log.w(TAG, "Error restoring session: " + t.getMessage());
                         }
@@ -303,6 +511,13 @@ public class CloudSyncManager {
             int restoredDegrees = 0;
             int restoredSubjects = 0;
 
+            List<Degree> localDegrees = dao.getDegreesListSync();
+            Map<String, Degree> localDegreeByName = new HashMap<>();
+            for (Degree ld : localDegrees) {
+                if (ld.name != null) localDegreeByName.put(ld.name.trim().toLowerCase(Locale.ROOT), ld);
+            }
+            Map<Integer, Integer> serverToLocalDegreeId = new HashMap<>();
+
             CloudApiClient.ApiResponse degListRes = CloudApiClient.sendApiRequest(context, "/degrees", "GET", null, token);
             if (degListRes.isSuccess() && degListRes.json != null) {
                 JSONArray items = degListRes.json.optJSONArray("items");
@@ -310,10 +525,26 @@ public class CloudSyncManager {
                     for (int i = 0; i < items.length(); i++) {
                         try {
                             JSONObject d = items.getJSONObject(i);
-                            Degree degree = new Degree(d.getString("name"), d.optString("color", "#3B82F6"));
-                            degree.id = d.getInt("id");
-                            dao.insertOrReplaceDegree(degree);
-                            restoredDegrees++;
+                            int serverId = d.getInt("id");
+                            String name = d.getString("name").trim();
+                            String color = d.optString("color", "#3B82F6");
+                            String key = name.toLowerCase(Locale.ROOT);
+
+                            if (localDegreeByName.containsKey(key)) {
+                                serverToLocalDegreeId.put(serverId, localDegreeByName.get(key).id);
+                            } else {
+                                Degree degree = new Degree(name, color);
+                                dao.insertDegree(degree);
+                                List<Degree> refreshed = dao.getDegreesListSync();
+                                for (Degree r : refreshed) {
+                                    if (r.name != null && r.name.trim().equalsIgnoreCase(name)) {
+                                        serverToLocalDegreeId.put(serverId, r.id);
+                                        localDegreeByName.put(key, r);
+                                        break;
+                                    }
+                                }
+                                restoredDegrees++;
+                            }
                         } catch (Throwable t) {
                             Log.w(TAG, "Error fallback restoring degree: " + t.getMessage());
                         }
@@ -321,6 +552,7 @@ public class CloudSyncManager {
                 }
             }
 
+            List<Subject> localSubjects = dao.getSubjectsListSync();
             CloudApiClient.ApiResponse subListRes = CloudApiClient.sendApiRequest(context, "/subjects", "GET", null, token);
             if (subListRes.isSuccess() && subListRes.json != null) {
                 JSONArray items = subListRes.json.optJSONArray("items");
@@ -329,10 +561,27 @@ public class CloudSyncManager {
                         try {
                             JSONObject s = items.getJSONObject(i);
                             int courseId = s.optInt("course_id", 1);
-                            Subject subject = new Subject(courseId, s.getString("name"), s.optString("color", "#2563EB"));
-                            subject.id = s.getInt("id");
-                            dao.insertOrReplaceSubject(subject);
-                            restoredSubjects++;
+                            int targetDegId = serverToLocalDegreeId.containsKey(courseId)
+                                    ? serverToLocalDegreeId.get(courseId)
+                                    : (localDegreeByName.values().isEmpty() ? 1 : localDegreeByName.values().iterator().next().id);
+
+                            String name = s.getString("name").trim();
+                            String color = s.optString("color", "#2563EB");
+
+                            boolean exists = false;
+                            for (Subject sub : localSubjects) {
+                                if (sub.degreeId == targetDegId && sub.name != null && sub.name.trim().equalsIgnoreCase(name)) {
+                                    exists = true;
+                                    break;
+                                }
+                            }
+
+                            if (!exists) {
+                                Subject subject = new Subject(targetDegId, name, color);
+                                dao.insertSubject(subject);
+                                localSubjects.add(subject);
+                                restoredSubjects++;
+                            }
                         } catch (Throwable t) {
                             Log.w(TAG, "Error fallback restoring subject: " + t.getMessage());
                         }
@@ -340,40 +589,8 @@ public class CloudSyncManager {
                 }
             }
 
-            int restoredSessions = 0;
-            CloudApiClient.ApiResponse sessListRes = CloudApiClient.sendApiRequest(context, "/sessions", "GET", null, token);
-            if (sessListRes.isSuccess() && sessListRes.json != null) {
-                JSONArray items = sessListRes.json.optJSONArray("items");
-                if (items != null) {
-                    for (int i = 0; i < items.length(); i++) {
-                        try {
-                            JSONObject sess = items.getJSONObject(i);
-                            int subId = sess.optInt("subject_id", 1);
-                            String startedStr = sess.optString("started_at", "");
-                            String endedStr = sess.optString("ended_at", "");
-                            int durationSec = sess.optInt("duration_seconds", 0);
-                            long startMs = parseIsoOrEpoch(startedStr);
-                            long endMs = !endedStr.isEmpty() ? parseIsoOrEpoch(endedStr) : (startMs + (durationSec * 1000L));
-                            StudySession session = new StudySession(
-                                    subId,
-                                    startMs > 0 ? startMs : System.currentTimeMillis() - (durationSec * 1000L),
-                                    endMs > 0 ? endMs : System.currentTimeMillis(),
-                                    0,
-                                    0,
-                                    sess.optString("notes", "")
-                            );
-                            session.id = sess.optInt("id", 0);
-                            dao.insertOrReplaceSession(session);
-                            restoredSessions++;
-                        } catch (Throwable t) {
-                            Log.w(TAG, "Error fallback restoring session: " + t.getMessage());
-                        }
-                    }
-                }
-            }
-
             LocalVaultManager.autoSaveVault(context);
-            String msg = "Restored " + restoredSessions + " sessions, " + restoredSubjects + " subjects & " + restoredDegrees + " degrees from EduTrace Server! 📥";
+            String msg = "Restored " + restoredSubjects + " subjects & " + restoredDegrees + " degrees from EduTrace Server! 📥";
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onSuccess(msg));
             return true;
         } catch (Exception e) {
