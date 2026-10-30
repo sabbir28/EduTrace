@@ -59,6 +59,20 @@ public class TimerActivity extends AppCompatActivity {
         }
     };
 
+    private final BroadcastReceiver sessionTimedOutReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String reason = intent.getStringExtra("reason");
+            runOnUiThread(() -> {
+                try {
+                    android.widget.Toast.makeText(TimerActivity.this, "Server Notice: " + (reason != null ? reason : "Session timed out."), android.widget.Toast.LENGTH_LONG).show();
+                    saveSession();
+                    finish();
+                } catch (Throwable ignored) {}
+            });
+        }
+    };
+
     private Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
@@ -218,6 +232,7 @@ public class TimerActivity extends AppCompatActivity {
                 binding.tvStatus.setTextColor(getResources().getColor(R.color.status_break));
                 binding.tvStatus.animate().alpha(0.8f).scaleX(0.9f).scaleY(0.9f).setDuration(300);
                 sessionManager.setPaused(true, breakStartTime, totalBreakTime);
+                org.sabbir.edutrace.data.cloud.CloudDbManager.pauseLiveServerSession(this, "Student took a break");
                 org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(this, sessionManager.getActiveSessionElapsed(), true);
             } else {
                 isPaused = false;
@@ -228,6 +243,7 @@ public class TimerActivity extends AppCompatActivity {
                 binding.btnBreak.setText("BREAK");
                 binding.tvStatus.animate().alpha(1.0f).scaleX(1.0f).scaleY(1.0f).setDuration(300);
                 sessionManager.setPaused(false, 0, totalBreakTime);
+                org.sabbir.edutrace.data.cloud.CloudDbManager.resumeLiveServerSession(this);
                 org.sabbir.edutrace.data.cloud.CloudDbManager.sendLiveSessionHeartbeat(this, sessionManager.getActiveSessionElapsed(), false);
             }
         });
@@ -372,6 +388,7 @@ public class TimerActivity extends AppCompatActivity {
         StudySession session = new StudySession(subjectId, startTime, endTime, totalBreakTime, distractionCount, "");
         new StudyRepository(getApplication()).insertSession(session);
         org.sabbir.edutrace.data.cloud.CloudDbManager.stopLiveServerSession(this, sessionMillis, "Completed study session for " + subjectName);
+        org.sabbir.edutrace.data.cloud.CloudDbManager.consolidateDailySessions(this, null, null, null);
 
         sessionManager.clearSession();
 
@@ -445,7 +462,12 @@ public class TimerActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         lastAppLeaveTime = System.currentTimeMillis();
-        unregisterReceiver(inAppCallReceiver);
+        try {
+            unregisterReceiver(inAppCallReceiver);
+        } catch (Exception ignored) {}
+        try {
+            unregisterReceiver(sessionTimedOutReceiver);
+        } catch (Exception ignored) {}
     }
 
     @Override
@@ -459,6 +481,13 @@ public class TimerActivity extends AppCompatActivity {
             registerReceiver(inAppCallReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(inAppCallReceiver, filter);
+        }
+
+        android.content.IntentFilter timeoutFilter = new android.content.IntentFilter(org.sabbir.edutrace.data.cloud.CloudDbManager.ACTION_SESSION_TIMED_OUT);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(sessionTimedOutReceiver, timeoutFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(sessionTimedOutReceiver, timeoutFilter);
         }
         
         if (lastAppLeaveTime > 0) {

@@ -27,11 +27,31 @@ public class StudyTimerService extends Service {
     private String subjectName;
     private long lastScreenOffTime = 0;
     private long lastHeartbeatTime = 0;
-    private static final long INACTIVITY_THRESHOLD = 20 * 60 * 1000; // 20 minutes screen-off auto-pause
-    private static final long HEARTBEAT_INTERVAL = 60 * 1000; // 60 seconds live tick
+    private static final long INACTIVITY_THRESHOLD = 75 * 1000L; // 75 seconds server cutoff auto-pause
+    private static final long HEARTBEAT_INTERVAL = 60 * 1000L; // 60 seconds live tick
     private int originalRingVolume = -1;
     private int originalNotificationVolume = -1;
     private int originalSystemVolume = -1;
+
+    private BroadcastReceiver sessionTimedOutReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String reason = intent.getStringExtra("reason");
+            stopSessionDueToTimeout(reason != null ? reason : "Session timed out on server (75s inactivity cutoff).");
+        }
+    };
+
+    private void stopSessionDueToTimeout(String reason) {
+        isWardenRunning = false;
+        wardenHandler.removeCallbacks(wardenRunnable);
+        timerHandler.removeCallbacks(timerRunnable);
+        disableDND();
+        updateNotification("Study Session Finalized", reason);
+        new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            stopForeground(true);
+            stopSelf();
+        }, 4000);
+    }
 
     private Runnable wardenRunnable = new Runnable() {
         @Override
@@ -116,6 +136,13 @@ public class StudyTimerService extends Service {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } else {
             registerReceiver(screenReceiver, filter);
+        }
+
+        IntentFilter timeoutFilter = new IntentFilter(org.sabbir.edutrace.data.cloud.CloudDbManager.ACTION_SESSION_TIMED_OUT);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(sessionTimedOutReceiver, timeoutFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(sessionTimedOutReceiver, timeoutFilter);
         }
         
         enableDND();
@@ -216,7 +243,12 @@ public class StudyTimerService extends Service {
         isWardenRunning = false;
         wardenHandler.removeCallbacks(wardenRunnable);
         timerHandler.removeCallbacks(timerRunnable);
-        unregisterReceiver(screenReceiver);
+        try {
+            unregisterReceiver(screenReceiver);
+        } catch (Exception ignored) {}
+        try {
+            unregisterReceiver(sessionTimedOutReceiver);
+        } catch (Exception ignored) {}
         disableDND();
 
         // Restore original audio volumes if they were muted during library mode

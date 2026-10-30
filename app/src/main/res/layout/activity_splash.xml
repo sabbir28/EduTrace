@@ -3,54 +3,92 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0F172A">
+    android:background="@color/splash_bg">
 
+    <!-- Ambient Subtle Radial Glow behind Chrome Logo -->
+    <View
+        android:id="@+id/vSplashGlow"
+        android:layout_width="260dp"
+        android:layout_height="260dp"
+        android:background="@drawable/bg_splash_glow"
+        app:layout_constraintBottom_toBottomOf="@id/ivLogo"
+        app:layout_constraintEnd_toEndOf="@id/ivLogo"
+        app:layout_constraintStart_toStartOf="@id/ivLogo"
+        app:layout_constraintTop_toTopOf="@id/ivLogo" />
+
+    <!-- Center Hero: Parent Company S28 Logo -->
     <ImageView
         android:id="@+id/ivLogo"
-        android:layout_width="160dp"
-        android:layout_height="160dp"
-        android:src="@drawable/ic_launcher_foreground_new"
+        android:layout_width="180dp"
+        android:layout_height="180dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="Parent Company Logo"
+        android:scaleType="fitCenter"
+        android:src="@drawable/company_icon"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.35" />
+        app:layout_constraintVertical_bias="0.38" />
 
+    <!-- Product Branding: EduTrace in Crisp White -->
     <TextView
         android:id="@+id/tvAppName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="24dp"
+        android:layout_marginTop="20dp"
         android:fontFamily="sans-serif-black"
+        android:letterSpacing="0.04"
         android:text="EduTrace"
-        android:textColor="#6366F1"
+        android:textColor="@color/splash_text_primary"
         android:textSize="36sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/ivLogo" />
 
+    <!-- Tagline: Refined Silver Tracking -->
     <TextView
+        android:id="@+id/tvTagline"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Master Your Study"
-        android:textColor="#94A3B8"
-        android:textSize="16sp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.22"
+        android:text="MASTER YOUR STUDY"
+        android:textColor="@color/splash_text_secondary"
+        android:textSize="13sp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvAppName" />
 
+    <!-- Sleek Minimalist Loading Indicator -->
     <com.google.android.material.progressindicator.LinearProgressIndicator
-        android:layout_width="200dp"
+        android:id="@+id/progressIndicator"
+        android:layout_width="150dp"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="48dp"
+        android:layout_marginBottom="40dp"
         android:indeterminate="true"
-        app:indicatorColor="#FACC15"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:indicatorColor="@color/splash_progress_indicator"
+        app:layout_constraintBottom_toTopOf="@id/tvBadge"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:trackColor="#1E293B"
-        app:trackCornerRadius="4dp"
-        app:trackThickness="4dp" />
+        app:trackColor="@color/splash_progress_track"
+        app:trackCornerRadius="3dp"
+        app:trackThickness="3dp" />
+
+    <!-- Subtle Footer Micro-Text -->
+    <TextView
+        android:id="@+id/tvBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="28dp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.25"
+        android:text="NEXT-GEN STUDY INTELLIGENCE"
+        android:textColor="#52525B"
+        android:textSize="10sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

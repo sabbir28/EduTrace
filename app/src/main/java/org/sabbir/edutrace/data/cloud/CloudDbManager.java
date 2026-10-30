@@ -21,6 +21,7 @@ import org.sabbir.edutrace.data.models.TimelineDayData;
 import org.sabbir.edutrace.data.models.TimelineSegment;
 import org.sabbir.edutrace.data.models.TimerMatchStatus;
 import org.sabbir.edutrace.utils.NotificationCacheManager;
+import org.sabbir.edutrace.utils.SessionManager;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -366,8 +367,32 @@ public class CloudDbManager {
         }
     }
 
+    public static final String ACTION_SESSION_TIMED_OUT = "org.sabbir.edutrace.ACTION_SESSION_TIMED_OUT";
+
+    /**
+     * Broadcast timeout/conflict notification to all active activities and services.
+     */
+    public static void handleSessionConflictOrTimeout(Context context, String reason) {
+        if (context == null) return;
+        try {
+            context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                    .edit()
+                    .remove("cloud_active_server_session_id")
+                    .apply();
+
+            new SessionManager(context).clearSession();
+
+            Intent intent = new Intent(ACTION_SESSION_TIMED_OUT);
+            intent.putExtra("reason", reason != null ? reason : "Session timed out on server (75s inactivity cutoff).");
+            context.sendBroadcast(intent);
+        } catch (Throwable t) {
+            Log.w(TAG, "Notice handling session timeout: " + t.getMessage());
+        }
+    }
+
     /**
      * Start live session tracking on server when a user opens and studies a subject.
+     * Enforces single active session rule and handles 409 conflict auto-recovery.
      */
     public static void startLiveServerSession(Context context, int localSubjectId, String subjectName) {
         if (!isLoggedIn(context)) return;
@@ -389,6 +414,21 @@ public class CloudDbManager {
                     }
                 }
 
+                if (serverSubId == -1 && subjectName != null && !subjectName.isEmpty()) {
+                    // Auto-provision subject on server so session start never stalls
+                    try {
+                        JSONObject createSubPayload = new JSONObject();
+                        createSubPayload.put("name", subjectName);
+                        ApiResponse createRes = sendApiRequest(context, "/subjects", "POST", createSubPayload, token);
+                        if (createRes.isSuccess() && createRes.json != null) {
+                            JSONObject created = createRes.json.optJSONObject("subject");
+                            if (created != null) {
+                                serverSubId = created.optInt("id", -1);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
+
                 if (serverSubId != -1) {
                     JSONObject payload = new JSONObject();
                     payload.put("subject_id", serverSubId);
@@ -403,6 +443,7 @@ public class CloudDbManager {
                                         .edit()
                                         .putInt("cloud_active_server_session_id", serverSessId)
                                         .apply();
+                                new SessionManager(context).setServerSessionId(serverSessId);
                                 Log.d(TAG, "Live server study session started: #" + serverSessId);
                             }
                         }
@@ -432,6 +473,7 @@ public class CloudDbManager {
                                             .edit()
                                             .putInt("cloud_active_server_session_id", serverSessId)
                                             .apply();
+                                    new SessionManager(context).setServerSessionId(serverSessId);
                                     Log.d(TAG, "Live server study session started on retry: #" + serverSessId);
                                 }
                             }
@@ -445,8 +487,79 @@ public class CloudDbManager {
     }
 
     /**
+     * Pause live study session on server (creates StudySessionPause record).
+     */
+    public static void pauseLiveServerSession(Context context, String notes, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .getInt("cloud_active_server_session_id", -1);
+        if (serverSessId == -1) return;
+
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (notes != null && !notes.isEmpty()) {
+                    payload.put("notes", notes);
+                }
+                ApiResponse res = sendApiRequest(context, "/sessions/" + serverSessId + "/pause", "POST", payload, token);
+                if (res.isSuccess()) {
+                    Log.d(TAG, "Live server study session paused: #" + serverSessId);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Session paused on server"));
+                } else {
+                    if (res.statusCode == 409 || res.statusCode == 404 || res.statusCode == 410) {
+                        handleSessionConflictOrTimeout(context, res.errorMessage);
+                    }
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error pausing live server session: " + e.getMessage());
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void pauseLiveServerSession(Context context, String notes) {
+        pauseLiveServerSession(context, notes, null);
+    }
+
+    /**
+     * Resume live study session on server (closes open StudySessionPause record).
+     */
+    public static void resumeLiveServerSession(Context context, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        final int serverSessId = context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                .getInt("cloud_active_server_session_id", -1);
+        if (serverSessId == -1) return;
+
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/sessions/" + serverSessId + "/resume", "POST", new JSONObject(), token);
+                if (res.isSuccess()) {
+                    Log.d(TAG, "Live server study session resumed: #" + serverSessId);
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess("Session resumed on server"));
+                } else {
+                    if (res.statusCode == 409 || res.statusCode == 404 || res.statusCode == 410) {
+                        handleSessionConflictOrTimeout(context, res.errorMessage);
+                    }
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Error resuming live server session: " + e.getMessage());
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    public static void resumeLiveServerSession(Context context) {
+        resumeLiveServerSession(context, null);
+    }
+
+    /**
      * Send live tick/heartbeat for the active session to EduTrace Server.
      * Prevents offline duration inflation (e.g. mobile data turned off) and maintains live sync.
+     * Detects 75s inactivity timeout (HTTP 409) and safely triggers auto-cleanup.
      */
     public static void sendLiveSessionHeartbeat(Context context, long elapsedMillis, boolean isPaused, ActionCallback callback) {
         if (!isLoggedIn(context)) return;
@@ -475,16 +588,14 @@ public class CloudDbManager {
                                         .edit()
                                         .putInt("cloud_active_server_session_id", returnedId)
                                         .apply();
+                                new SessionManager(context).setServerSessionId(returnedId);
                             }
                         }
                     }
                     if (callback != null) mainHandler.post(() -> callback.onSuccess("Heartbeat synced"));
                 } else if (res.statusCode == 404 || res.statusCode == 409 || res.statusCode == 410 || res.statusCode == 400) {
-                    context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
-                            .edit()
-                            .remove("cloud_active_server_session_id")
-                            .apply();
-                    if (callback != null) mainHandler.post(() -> callback.onError("Session expired or completed on server"));
+                    handleSessionConflictOrTimeout(context, res.errorMessage);
+                    if (callback != null) mainHandler.post(() -> callback.onError("Session expired or completed on server: " + res.errorMessage));
                 }
             } catch (Exception e) {
                 // Heartbeat offline - mobile data may be off
@@ -533,6 +644,85 @@ public class CloudDbManager {
 
     public static void stopLiveServerSession(Context context, String notes) {
         stopLiveServerSession(context, 0, notes);
+    }
+
+    public interface ActiveSessionCallback {
+        void onActiveSession(boolean isActive, JSONObject sessionObj, long elapsedSeconds, String serverTime);
+        void onError(String message);
+    }
+
+    /**
+     * Query GET /api/sessions/active to restore state or detect timed out sessions cleanly.
+     */
+    public static void fetchActiveSession(Context context, ActiveSessionCallback callback) {
+        if (!isLoggedIn(context) || callback == null) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                ApiResponse res = sendApiRequest(context, "/sessions/active", "GET", null, token);
+                if (res.isSuccess() && res.json != null) {
+                    boolean active = res.json.optBoolean("active", false);
+                    JSONObject sessionObj = res.json.optJSONObject("session");
+                    long elapsedSeconds = 0;
+                    if (sessionObj != null) {
+                        elapsedSeconds = sessionObj.optLong("elapsed_seconds", 0);
+                        int sessId = sessionObj.optInt("id", -1);
+                        if (active && sessId != -1) {
+                            context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putInt("cloud_active_server_session_id", sessId)
+                                    .apply();
+                            new SessionManager(context).setServerSessionId(sessId);
+                        }
+                    }
+                    if (!active) {
+                        context.getSharedPreferences(PREFS_AUTH, Context.MODE_PRIVATE)
+                                .edit()
+                                .remove("cloud_active_server_session_id")
+                                .apply();
+                    }
+                    final boolean fActive = active;
+                    final JSONObject fSession = sessionObj;
+                    final long fElapsed = elapsedSeconds;
+                    final String fServerTime = res.json.optString("server_time", "");
+                    mainHandler.post(() -> callback.onActiveSession(fActive, fSession, fElapsed, fServerTime));
+                } else {
+                    mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * Consolidate fragmented daily sessions via POST /api/sessions/consolidate.
+     * Prunes redundant records and recalculates daily summary seamlessly.
+     */
+    public static void consolidateDailySessions(Context context, Integer subjectId, String dateIso, ActionCallback callback) {
+        if (!isLoggedIn(context)) return;
+        final String token = getAccessToken(context);
+        cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (subjectId != null && subjectId > 0) {
+                    payload.put("subject_id", subjectId);
+                }
+                if (dateIso != null && !dateIso.isEmpty()) {
+                    payload.put("date", dateIso);
+                }
+                ApiResponse res = sendApiRequest(context, "/sessions/consolidate", "POST", payload, token);
+                if (res.isSuccess()) {
+                    int pruned = res.json != null ? res.json.optInt("pruned_sessions_count", 0) : 0;
+                    String msg = "Consolidated daily sessions. Pruned " + pruned + " redundant records.";
+                    if (callback != null) mainHandler.post(() -> callback.onSuccess(msg));
+                } else {
+                    if (callback != null) mainHandler.post(() -> callback.onError(res.errorMessage));
+                }
+            } catch (Exception e) {
+                if (callback != null) mainHandler.post(() -> callback.onError(e.getMessage()));
+            }
+        });
     }
 
     public interface SubjectStatsCallback {

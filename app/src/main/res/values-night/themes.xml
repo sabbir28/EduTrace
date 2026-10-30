@@ -11,4 +11,12 @@
         <item name="android:statusBarColor" tools:targetApi="l">#0F172A</item>
         <item name="android:windowBackground">#0F172A</item>
     </style>
+
+    <!-- Dedicated Splash Screen Theme: Pitch Black with Crisp White Main Elements -->
+    <style name="Theme.EduTrace.Splash" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/splash_bg</item>
+        <item name="android:statusBarColor" tools:targetApi="l">@color/splash_bg</item>
+        <item name="android:navigationBarColor" tools:targetApi="o_mr1">@color/splash_bg</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
 </resources>

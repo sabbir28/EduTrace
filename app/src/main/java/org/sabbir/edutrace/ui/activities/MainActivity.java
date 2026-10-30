@@ -577,6 +577,37 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
             }
         } catch (Throwable ignored) {}
 
+        if (sessionManager != null && sessionManager.isActive()) {
+            if (sessionManager.isStaleOrInterrupted()) {
+                // Interrupted beyond 75s cutoff: auto-finalize stale session to prevent zombie timer
+                long now = System.currentTimeMillis();
+                long start = sessionManager.getStartTime();
+                long elapsed = sessionManager.getActiveSessionElapsed();
+                long totalBreak = sessionManager.getTotalBreakTime();
+                long end = Math.min(now, start + elapsed + totalBreak);
+                org.sabbir.edutrace.data.models.StudySession staleSess = new org.sabbir.edutrace.data.models.StudySession(
+                        sessionManager.getSubjectId(), start, end, totalBreak, sessionManager.getDistractionCount(), "Auto-finalized stale session (75s inactivity cutoff)");
+                new org.sabbir.edutrace.data.repository.StudyRepository(getApplication()).insertSession(staleSess);
+                CloudDbManager.stopLiveServerSession(this, elapsed, "Auto-finalized stale session");
+                sessionManager.clearSession();
+            }
+        }
+
+        if (CloudDbManager.isLoggedIn(this)) {
+            CloudDbManager.fetchActiveSession(this, new CloudDbManager.ActiveSessionCallback() {
+                @Override
+                public void onActiveSession(boolean isActive, org.json.JSONObject sessionObj, long elapsedSeconds, String serverTime) {
+                    if (!isActive && sessionManager != null && sessionManager.isActive() && sessionManager.isStaleOrInterrupted()) {
+                        sessionManager.clearSession();
+                        refreshStats();
+                    }
+                }
+
+                @Override
+                public void onError(String message) {}
+            });
+        }
+
         refreshStats();
         updateCloudSyncBanner();
         CloudDbManager.autoSyncOnStartup(this);

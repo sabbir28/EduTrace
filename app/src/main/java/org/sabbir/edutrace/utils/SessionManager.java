@@ -1,12 +1,14 @@
 package org.sabbir.edutrace.utils;
-import org.sabbir.edutrace.R;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 
 /**
  * Manages the state of an active study session using SharedPreferences.
- * Allows the timer to persist across activity restarts and app kills.
+ * Strictly aligned with EduTraceServer study session specifications:
+ * - 60-second live heartbeat intervals
+ * - 15-second grace window
+ * - 75-second hard server inactivity cutoff
  */
 public class SessionManager {
     private static final String PREF_NAME = "EduTrace_ActiveSession";
@@ -20,10 +22,12 @@ public class SessionManager {
     private static final String KEY_IS_ACTIVE = "is_active";
     private static final String KEY_ACCUMULATED_ACTIVE_TIME = "accumulated_active_time";
     private static final String KEY_LAST_TICK_TIME = "last_tick_time";
+    private static final String KEY_SERVER_SESSION_ID = "server_session_id";
 
-    // Maximum expected interval between active timer ticks (1s regular cadence)
-    // If the gap exceeds 3 minutes, app was closed/device slept/disconnected.
-    private static final long MAX_TICK_GAP_MS = 3 * 60 * 1000;
+    // Server-enforced hard timeout cutoff: 60s ping interval + 15s grace window = 75 seconds.
+    public static final long SERVER_HEARTBEAT_INTERVAL_MS = 60 * 1000L;
+    public static final long SERVER_GRACE_MS = 15 * 1000L;
+    public static final long MAX_TICK_GAP_MS = 75 * 1000L;
 
     private final SharedPreferences prefs;
 
@@ -43,6 +47,7 @@ public class SessionManager {
                 .putBoolean(KEY_IS_ACTIVE, true)
                 .putLong(KEY_ACCUMULATED_ACTIVE_TIME, 0)
                 .putLong(KEY_LAST_TICK_TIME, startTime)
+                .putInt(KEY_SERVER_SESSION_ID, -1)
                 .apply();
     }
 
@@ -54,8 +59,8 @@ public class SessionManager {
     }
 
     /**
-     * Records a live heartbeat tick from the timer loop (run every 1s).
-     * Prevents wild duration jumps if the device slept or app was killed for hours.
+     * Records a live tick from the timer loop.
+     * Prevents clock manipulation and aligns strictly with the server's 75s inactivity rule.
      */
     public synchronized void recordTick(long now) {
         if (!isActive() || isPaused()) return;
@@ -72,10 +77,10 @@ public class SessionManager {
                     .putLong(KEY_LAST_TICK_TIME, now)
                     .apply();
         } else {
-            // Gap > 3 min detected! Device disconnected, screen slept, or app process was killed.
-            // Credit at most 60s grace, then auto-pause to prevent 7-hour inflation.
-            currentAccum += 60000;
-            long autoPauseTime = lastTick + 60000;
+            // Gap > 75s detected! Server hard inactivity cutoff exceeded (60s heartbeat + 15s grace).
+            // Credit at most 15s grace (server rule), then auto-pause to prevent fake duration inflation.
+            currentAccum += SERVER_GRACE_MS;
+            long autoPauseTime = lastTick + SERVER_GRACE_MS;
             prefs.edit()
                     .putLong(KEY_ACCUMULATED_ACTIVE_TIME, currentAccum)
                     .putLong(KEY_LAST_TICK_TIME, now)
@@ -99,6 +104,8 @@ public class SessionManager {
             long currentAccum = prefs.getLong(KEY_ACCUMULATED_ACTIVE_TIME, 0);
             if (delta > 0 && delta <= MAX_TICK_GAP_MS) {
                 currentAccum += delta;
+            } else if (delta > MAX_TICK_GAP_MS) {
+                currentAccum += SERVER_GRACE_MS;
             }
             editor.putLong(KEY_ACCUMULATED_ACTIVE_TIME, currentAccum);
             editor.putLong(KEY_LAST_TICK_TIME, now);
@@ -107,6 +114,32 @@ public class SessionManager {
             editor.putLong(KEY_LAST_TICK_TIME, System.currentTimeMillis());
         }
         editor.apply();
+    }
+
+    public void setServerSessionId(int serverSessionId) {
+        prefs.edit().putInt(KEY_SERVER_SESSION_ID, serverSessionId).apply();
+    }
+
+    public int getServerSessionId() {
+        return prefs.getInt(KEY_SERVER_SESSION_ID, -1);
+    }
+
+    /**
+     * Synchronize session state from server GET /api/sessions/active.
+     */
+    public void syncFromServer(int serverSessionId, int subjectId, String subjectName, long startTime, long elapsedSeconds, boolean isPaused) {
+        long elapsedMillis = Math.max(0, elapsedSeconds * 1000L);
+        long now = System.currentTimeMillis();
+        prefs.edit()
+                .putBoolean(KEY_IS_ACTIVE, true)
+                .putInt(KEY_SERVER_SESSION_ID, serverSessionId)
+                .putInt(KEY_SUBJECT_ID, subjectId)
+                .putString(KEY_SUBJECT_NAME, subjectName != null ? subjectName : "")
+                .putLong(KEY_START_TIME, startTime > 0 ? startTime : (now - elapsedMillis))
+                .putLong(KEY_ACCUMULATED_ACTIVE_TIME, elapsedMillis)
+                .putBoolean(KEY_IS_PAUSED, isPaused)
+                .putLong(KEY_LAST_TICK_TIME, now)
+                .apply();
     }
 
     public void clearSession() {
@@ -150,13 +183,13 @@ public class SessionManager {
     }
 
     /**
-     * Checks if the session was left running while app was killed or disconnected for > 5 minutes.
+     * Checks if the session was left running while app was killed or disconnected for > 75 seconds.
      */
     public boolean isStaleOrInterrupted() {
         if (!isActive()) return false;
         long now = System.currentTimeMillis();
         long lastTick = getLastTickTime();
-        return !isPaused() && (now - lastTick) > (5 * 60 * 1000);
+        return !isPaused() && (now - lastTick) > MAX_TICK_GAP_MS;
     }
 
     /**
@@ -176,8 +209,8 @@ public class SessionManager {
         long delta = Math.max(0, now - lastTick);
 
         if (delta > MAX_TICK_GAP_MS) {
-            // Disconnection / idle gap: cap delta to 60s grace
-            return Math.max(0, accumulated + 60000);
+            // Disconnection / idle gap: cap delta to 15s grace (server policy)
+            return Math.max(0, accumulated + SERVER_GRACE_MS);
         } else {
             return Math.max(0, accumulated + delta);
         }

@@ -18,4 +18,11 @@
     <color name="status_break">#10B981</color>
     <color name="distraction_alert">#F43F5E</color>
     <color name="icon_background_dark">#0A0A0C</color>
+
+    <!-- Splash Screen Palette (Pitch Black & Crisp White / Silver Chrome) -->
+    <color name="splash_bg">#FF000000</color>
+    <color name="splash_text_primary">#FFFFFFFF</color>
+    <color name="splash_text_secondary">#FF94A3B8</color>
+    <color name="splash_progress_track">#FF26262B</color>
+    <color name="splash_progress_indicator">#FFFFFFFF</color>
 </resources>
