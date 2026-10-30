@@ -66,19 +66,16 @@ public class CloudSyncManager {
                 // 1. Pull latest academic data from cloud (/sync/restore) & update Room DB
                 doRestoreData(appContext, null);
 
-                // 2. Push any new offline local academic records to cloud (/sync/backup)
-                doBackupData(appContext, null);
-
-                // 3. Refresh user profile session (/auth/me)
+                // 2. Refresh user profile session (/auth/me)
                 CloudAuthManager.doSyncUserProfile(appContext);
 
-                // 4. Prefetch notifications cache & unread count (/notifications)
+                // 3. Prefetch notifications cache & unread count (/notifications)
                 CloudRankingsManager.doPrefetchNotifications(appContext);
 
-                // 5. Prefetch scholar rankings (/rankings/me & /rankings)
+                // 4. Prefetch scholar rankings (/rankings/me & /rankings)
                 CloudRankingsManager.doPrefetchRankings(appContext);
 
-                // 6. Record app open telemetry
+                // 5. Record app open telemetry
                 CloudRankingsManager.recordDeviceActivity(appContext, "app_open");
 
                 Log.d(TAG, "Automatic background data load on app open completed.");
@@ -122,144 +119,30 @@ public class CloudSyncManager {
 
     public static boolean doBackupData(Context context, CloudDbManager.SyncProgressCallback callback) {
         if (!CloudAuthManager.isLoggedIn(context)) {
-            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Please sign in to backup data to EduTrace Server."));
+            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Please sign in to view cloud status."));
             return false;
         }
 
-        final String token = CloudAuthManager.getAccessToken(context);
         try {
-            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Collecting local study data..."));
-            StudyDatabase localDb = StudyDatabase.getDatabase(context);
-            StudyDao dao = localDb.studyDao();
+            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Securing local study records into Local Safe Vault..."));
 
-            List<Degree> degrees = dao.getDegreesListSync();
-            List<Subject> subjects = dao.getSubjectsListSync();
-            List<StudySession> sessions = dao.getSessionsListSync();
+            // Safely archive local study history on device (Local Safe Vault)
+            LocalVaultManager.autoSaveVault(context);
 
-            JSONObject rootPayload = new JSONObject();
-
-            // 1. Degrees
-            JSONArray degArr = new JSONArray();
-            for (Degree d : degrees) {
-                JSONObject dObj = new JSONObject();
-                dObj.put("local_id", d.id);
-                dObj.put("name", d.name);
-                dObj.put("color_hex", d.colorHex != null ? d.colorHex : "#3B82F6");
-                degArr.put(dObj);
-            }
-            rootPayload.put("degrees", degArr);
-
-            // 2. Subjects
-            JSONArray subArr = new JSONArray();
-            for (Subject s : subjects) {
-                JSONObject sObj = new JSONObject();
-                sObj.put("local_id", s.id);
-                sObj.put("degree_local_id", s.degreeId);
-                sObj.put("name", s.name);
-                sObj.put("color_hex", s.colorHex != null ? s.colorHex : "#2563EB");
-                subArr.put(sObj);
-            }
-            rootPayload.put("subjects", subArr);
-
-            // 3. Sessions
-            JSONArray sessArr = new JSONArray();
-            for (StudySession s : sessions) {
-                JSONObject sessObj = new JSONObject();
-                sessObj.put("local_id", s.id);
-                sessObj.put("subject_local_id", s.subjectId);
-                sessObj.put("start_timestamp", s.startTimestamp);
-                sessObj.put("end_timestamp", s.endTimestamp);
-                sessObj.put("break_duration_millis", s.breakDurationMillis);
-                sessObj.put("distraction_count", s.distractionCount);
-                sessObj.put("notes", s.notes != null ? s.notes : "");
-                sessArr.put(sessObj);
-            }
-            rootPayload.put("sessions", sessArr);
-
-            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Uploading to EduTrace Cloud Server..."));
-
-            CloudApiClient.ApiResponse res = CloudApiClient.sendApiRequest(context, "/sync/backup", "POST", rootPayload, token);
-
-            if (res.isSuccess()) {
-                long now = System.currentTimeMillis();
+            long now = System.currentTimeMillis();
+            if (context != null) {
                 context.getSharedPreferences(CloudApiClient.PREFS_AUTH, Context.MODE_PRIVATE)
                         .edit()
                         .putLong(KEY_LAST_BACKUP, now)
                         .apply();
-
-                LocalVaultManager.autoSaveVault(context);
-
-                String successMsg = "Successfully backed up " + sessions.size() + " sessions & " + subjects.size() + " subjects to EduTrace Server! ☁️";
-                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onSuccess(successMsg));
-                return true;
-            } else if (res.statusCode == 404) {
-                return doFallbackBackup(context, token, degrees, subjects, callback);
-            } else {
-                String err = res.errorMessage != null ? res.errorMessage : "Backup failed.";
-                if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError(err));
-                return false;
-            }
-        } catch (Exception e) {
-            Log.w(TAG, "Backup error: " + e.getMessage());
-            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
-            return false;
-        }
-    }
-
-    private static boolean doFallbackBackup(Context context, String token, List<Degree> degrees, List<Subject> subjects, CloudDbManager.SyncProgressCallback callback) {
-        try {
-            if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onProgress("Syncing records to EduTrace Server..."));
-            int syncedDegrees = 0;
-            int syncedSubjects = 0;
-
-            for (Degree d : degrees) {
-                JSONObject dPayload = new JSONObject();
-                dPayload.put("name", d.name);
-                dPayload.put("color", d.colorHex != null ? d.colorHex : "#3B82F6");
-                CloudApiClient.ApiResponse dRes = CloudApiClient.sendApiRequest(context, "/degrees", "POST", dPayload, token);
-                int serverDegreeId = -1;
-                if (dRes.isSuccess() && dRes.json != null) {
-                    JSONObject createdDegree = dRes.json.optJSONObject("degree");
-                    if (createdDegree != null) serverDegreeId = createdDegree.optInt("id", -1);
-                }
-                if (serverDegreeId != -1) {
-                    syncedDegrees++;
-                    JSONObject cPayload = new JSONObject();
-                    cPayload.put("name", "Core Studies");
-                    cPayload.put("degree_id", serverDegreeId);
-                    CloudApiClient.ApiResponse cRes = CloudApiClient.sendApiRequest(context, "/courses", "POST", cPayload, token);
-                    int serverCourseId = -1;
-                    if (cRes.isSuccess() && cRes.json != null) {
-                        JSONObject createdCourse = cRes.json.optJSONObject("course");
-                        if (createdCourse != null) serverCourseId = createdCourse.optInt("id", -1);
-                    }
-                    if (serverCourseId != -1) {
-                        for (Subject s : subjects) {
-                            if (s.degreeId == d.id) {
-                                JSONObject sPayload = new JSONObject();
-                                sPayload.put("name", s.name);
-                                sPayload.put("color", s.colorHex != null ? s.colorHex : "#2563EB");
-                                sPayload.put("course_id", serverCourseId);
-                                CloudApiClient.ApiResponse sRes = CloudApiClient.sendApiRequest(context, "/subjects", "POST", sPayload, token);
-                                if (sRes.isSuccess()) syncedSubjects++;
-                            }
-                        }
-                    }
-                }
             }
 
-            long now = System.currentTimeMillis();
-            context.getSharedPreferences(CloudApiClient.PREFS_AUTH, Context.MODE_PRIVATE)
-                    .edit()
-                    .putLong(KEY_LAST_BACKUP, now)
-                    .apply();
-
-            LocalVaultManager.autoSaveVault(context);
-            String successMsg = "Successfully synced " + syncedDegrees + " degrees & " + syncedSubjects + " subjects to EduTrace Server! ☁️";
+            // Sync is strictly pull-only (Server -> Client). Never send time or data updates to server.
+            String successMsg = "Local data safely secured in Local Vault. Cloud sync is in download-only mode from server.";
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onSuccess(successMsg));
             return true;
         } catch (Exception e) {
-            Log.w(TAG, "Fallback backup error: " + e.getMessage());
+            Log.w(TAG, "Local vault save notice: " + e.getMessage());
             if (callback != null) CloudApiClient.mainHandler.post(() -> callback.onError("Backup error: " + e.getMessage()));
             return false;
         }
