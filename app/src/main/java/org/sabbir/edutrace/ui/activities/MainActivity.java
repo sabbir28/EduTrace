@@ -93,6 +93,9 @@ public class MainActivity extends AppCompatActivity implements DegreeAdapter.OnD
         binding.btnBannerLogin.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, AuthActivity.class)));
         binding.cardCloudPrompt.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, AuthActivity.class)));
 
+        binding.cardFocusLauncher.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, FocusLauncherActivity.class)));
+        binding.btnOpenFocusLauncher.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, FocusLauncherActivity.class)));
+
         startAppUsageService();
         scheduleStudyReminder();
         requestNotificationPermission();
