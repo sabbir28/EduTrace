@@ -150,23 +150,205 @@
                 </FrameLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Soundscape Selection Glass Pill -->
-            <LinearLayout
-                android:id="@+id/soundscapePill"
-                android:layout_width="wrap_content"
+            <!-- EduTrace Study Focus Audio & Waveform Scrubber Widget -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardStudyMusic"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:visibility="gone"
-                android:background="@drawable/bg_glass_card"
-                android:paddingHorizontal="20dp"
-                android:paddingVertical="12dp"
-                android:orientation="horizontal"
-                android:elevation="4dp">
+                android:layout_marginTop="20dp"
+                app:cardBackgroundColor="@android:color/transparent"
+                app:cardCornerRadius="24dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="0dp"
+                app:cardPreventCornerOverlap="false"
+                app:cardUseCompatPadding="false">
 
-                <ImageView android:id="@+id/btnRain" android:layout_width="32dp" android:layout_height="32dp" android:padding="6dp" android:src="@drawable/ic_rain" app:tint="#CBD5E1" />
-                <ImageView android:id="@+id/btnLofi" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="16dp" android:padding="6dp" android:src="@drawable/ic_lofi" app:tint="#CBD5E1" />
-                <ImageView android:id="@+id/btnNoise" android:layout_width="32dp" android:layout_height="32dp" android:layout_marginStart="16dp" android:padding="6dp" android:src="@drawable/ic_noise" app:tint="#CBD5E1" />
-            </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_glass_card"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- Track Header Info Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@drawable/ic_music_note"
+                            app:tint="@color/elite_gold" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="10dp"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/tvMusicTrackTitle"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:ellipsize="marquee"
+                                android:fontFamily="sans-serif-black"
+                                android:singleLine="true"
+                                android:text="ambient_session.mp3"
+                                android:textColor="#FFFFFF"
+                                android:textSize="13sp" />
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:gravity="center_vertical"
+                                android:orientation="horizontal">
+
+                                <TextView
+                                    android:id="@+id/tvMusicDominantHz"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="sans-serif-medium"
+                                    android:text="Dominant: 440 Hz"
+                                    android:textColor="@color/elite_gold"
+                                    android:textSize="10sp" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginHorizontal="4dp"
+                                    android:text="•"
+                                    android:textColor="#64748B"
+                                    android:textSize="9sp" />
+
+                                <TextView
+                                    android:id="@+id/tvMusicStatusBadge"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="sans-serif"
+                                    android:text="CDN Byte-Range"
+                                    android:textColor="#94A3B8"
+                                    android:textSize="10sp" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <ImageView
+                            android:id="@+id/btnOpenPlaylist"
+                            android:layout_width="32dp"
+                            android:layout_height="32dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="6dp"
+                            android:src="@drawable/ic_playlist"
+                            app:tint="#CBD5E1" />
+                    </LinearLayout>
+
+                    <!-- Audio Energy Waveform Scrubber -->
+                    <org.sabbir.edutrace.ui.views.AudioEnergyWaveformScrubber
+                        android:id="@+id/waveformScrubber"
+                        android:layout_width="match_parent"
+                        android:layout_height="48dp"
+                        android:layout_marginTop="12dp" />
+
+                    <!-- Timestamp and Duration Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/tvMusicCurrentTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-mono"
+                            android:text="0:00"
+                            android:textColor="#94A3B8"
+                            android:textSize="10sp" />
+
+                        <View
+                            android:layout_width="0dp"
+                            android:layout_height="1dp"
+                            android:layout_weight="1" />
+
+                        <TextView
+                            android:id="@+id/tvMusicTotalTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="sans-serif-mono"
+                            android:text="0:00"
+                            android:textColor="#94A3B8"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+
+                    <!-- Transport Controls Row -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:orientation="horizontal">
+
+                        <ImageView
+                            android:id="@+id/btnMusicShuffle"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="5dp"
+                            android:src="@drawable/ic_shuffle"
+                            app:tint="#64748B" />
+
+                        <ImageView
+                            android:id="@+id/btnMusicPrev"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginStart="16dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="7dp"
+                            android:src="@drawable/ic_skip_previous"
+                            app:tint="#CBD5E1" />
+
+                        <FrameLayout
+                            android:id="@+id/btnMusicPlayPause"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_marginHorizontal="16dp"
+                            android:background="@drawable/circle_blue">
+
+                            <ImageView
+                                android:id="@+id/ivMusicPlayIcon"
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_play_arrow"
+                                app:tint="#FFFFFF" />
+                        </FrameLayout>
+
+                        <ImageView
+                            android:id="@+id/btnMusicNext"
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:layout_marginEnd="16dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="7dp"
+                            android:src="@drawable/ic_skip_next"
+                            app:tint="#CBD5E1" />
+
+                        <ImageView
+                            android:id="@+id/btnMusicRepeat"
+                            android:layout_width="28dp"
+                            android:layout_height="28dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:padding="5dp"
+                            android:src="@drawable/ic_repeat"
+                            app:tint="#64748B" />
+
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- Intelligence Section Card -->
             <com.google.android.material.card.MaterialCardView

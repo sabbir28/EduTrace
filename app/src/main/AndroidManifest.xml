@@ -57,6 +57,21 @@
         </receiver>
 
         <receiver
+            android:name=".widget.StudyAudioWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="org.sabbir.edutrace.widget.ACTION_PLAY_PAUSE" />
+                <action android:name="org.sabbir.edutrace.widget.ACTION_NEXT" />
+                <action android:name="org.sabbir.edutrace.widget.ACTION_PREV" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/study_audio_widget_info" />
+        </receiver>
+
+        <receiver
             android:name=".receivers.CallReceiver"
             android:exported="true">
             <intent-filter>

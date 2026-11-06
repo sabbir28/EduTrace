@@ -36,6 +36,8 @@ public class TimerActivity extends AppCompatActivity {
 
     private org.sabbir.edutrace.utils.SessionManager sessionManager;
     private org.sabbir.edutrace.utils.SoundscapeManager soundManager;
+    private org.sabbir.edutrace.utils.EduTraceMusicPlayer musicPlayer;
+    private org.sabbir.edutrace.utils.EduTraceMusicPlayer.PlaybackListener musicListener;
     private org.sabbir.edutrace.utils.QuoteManager quoteManager;
     private long lastQuoteUpdateTime = 0;
     private Snackbar incomingCallSnackbar;
@@ -211,7 +213,7 @@ public class TimerActivity extends AppCompatActivity {
 
         loadIntelligenceData();
 
-        setupSoundscapeControls();
+        setupEduTraceMusicControls();
         startEntranceAnimations();
 
         // Start Foreground Service Distraction Warden
@@ -276,6 +278,10 @@ public class TimerActivity extends AppCompatActivity {
         binding.timerWrapper.setAlpha(0f);
         binding.timerWrapper.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(1000).setStartDelay(200).setInterpolator(new android.view.animation.OvershootInterpolator(1.2f)).start();
 
+        binding.cardStudyMusic.setTranslationY(60f);
+        binding.cardStudyMusic.setAlpha(0f);
+        binding.cardStudyMusic.animate().translationY(0f).alpha(1f).setDuration(800).setStartDelay(250).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
+
         binding.intelligenceCard.setTranslationY(100f);
         binding.intelligenceCard.setAlpha(0f);
         binding.intelligenceCard.animate().translationY(0f).alpha(1f).setDuration(800).setStartDelay(300).setInterpolator(new android.view.animation.DecelerateInterpolator()).start();
@@ -289,42 +295,184 @@ public class TimerActivity extends AppCompatActivity {
         v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
     }
 
-    private void setupSoundscapeControls() {
+    private void setupEduTraceMusicControls() {
+        musicPlayer = org.sabbir.edutrace.utils.EduTraceMusicPlayer.getInstance(this);
+
+        // Header Sound Icon toggles the Music Card
         binding.ivToggleSound.setOnClickListener(v -> {
-            if (binding.soundscapePill.getVisibility() == android.view.View.GONE) {
-                binding.soundscapePill.setVisibility(android.view.View.VISIBLE);
-                binding.soundscapePill.setAlpha(0);
-                binding.soundscapePill.animate().alpha(1).setDuration(300);
+            performHapticFeedback(v);
+            if (binding.cardStudyMusic.getVisibility() == android.view.View.GONE) {
+                binding.cardStudyMusic.setVisibility(android.view.View.VISIBLE);
+                binding.cardStudyMusic.setAlpha(0f);
+                binding.cardStudyMusic.setTranslationY(-20f);
+                binding.cardStudyMusic.animate().alpha(1f).translationY(0f).setDuration(300).start();
+                binding.ivToggleSound.setColorFilter(getResources().getColor(R.color.elite_gold));
             } else {
-                binding.soundscapePill.animate().alpha(0).setDuration(300).withEndAction(() -> 
-                    binding.soundscapePill.setVisibility(android.view.View.GONE));
+                binding.cardStudyMusic.animate().alpha(0f).translationY(-20f).setDuration(250).withEndAction(() -> {
+                    binding.cardStudyMusic.setVisibility(android.view.View.GONE);
+                }).start();
+                binding.ivToggleSound.setColorFilter(android.graphics.Color.parseColor("#94A3B8"));
             }
         });
 
-        binding.btnRain.setOnClickListener(v -> toggleSound("rain", binding.btnRain));
-        binding.btnLofi.setOnClickListener(v -> toggleSound("lofi", binding.btnLofi));
-        binding.btnNoise.setOnClickListener(v -> toggleSound("noise", binding.btnNoise));
-    }
+        // Transport Controls
+        binding.btnMusicPlayPause.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            musicPlayer.togglePlayPause();
+        });
 
-    private void toggleSound(String name, android.widget.ImageView view) {
-        int resId = getResources().getIdentifier(name, "raw", getPackageName());
-        if (resId != 0) {
-            boolean wasPlaying = soundManager.isPlaying(resId);
-            soundManager.playSound(resId);
-            
-            // Reset all icons
-            binding.btnRain.setImageAlpha(100);
-            binding.btnLofi.setImageAlpha(100);
-            binding.btnNoise.setImageAlpha(100);
-            
-            if (!wasPlaying) {
-                view.setImageAlpha(255); // Highlight selected
-                view.animate().scaleX(1.2f).scaleY(1.2f).setDuration(200).withEndAction(() -> 
-                    view.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200));
-            } else {
-                view.animate().scaleX(1.0f).scaleY(1.0f).setDuration(200);
+        binding.btnMusicNext.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            musicPlayer.next();
+        });
+
+        binding.btnMusicPrev.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            musicPlayer.previous();
+        });
+
+        binding.btnMusicShuffle.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            boolean newShuffle = !musicPlayer.isShuffle();
+            musicPlayer.setShuffle(newShuffle);
+            binding.btnMusicShuffle.setColorFilter(newShuffle ? getResources().getColor(R.color.elite_gold) : android.graphics.Color.parseColor("#64748B"));
+            android.widget.Toast.makeText(this, newShuffle ? "Shuffle On" : "Shuffle Off", android.widget.Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnMusicRepeat.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            boolean newRepeat = !musicPlayer.isRepeat();
+            musicPlayer.setRepeat(newRepeat);
+            binding.btnMusicRepeat.setColorFilter(newRepeat ? getResources().getColor(R.color.elite_gold) : android.graphics.Color.parseColor("#64748B"));
+            android.widget.Toast.makeText(this, newRepeat ? "Repeat On" : "Repeat Off", android.widget.Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnOpenPlaylist.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            showMusicPlaylistDialog();
+        });
+
+        // Audio Energy Waveform Scrubber Interaction
+        binding.waveformScrubber.setOnScrubListener(new org.sabbir.edutrace.ui.views.AudioEnergyWaveformScrubber.OnScrubListener() {
+            @Override
+            public void onScrubStart() {
+                // User started dragging waveform
+            }
+
+            @Override
+            public void onScrubbing(float progressPercent, int estimatedMs) {
+                binding.tvMusicCurrentTime.setText(formatTime(estimatedMs));
+            }
+
+            @Override
+            public void onScrubStop(float progressPercent, int targetMs) {
+                musicPlayer.seekTo(targetMs);
+            }
+        });
+
+        // Register Live Playback Listener
+        musicListener = new org.sabbir.edutrace.utils.EduTraceMusicPlayer.PlaybackListener() {
+            @Override
+            public void onTrackSelected(org.sabbir.edutrace.data.models.EduTraceMusicTrack track, int index) {
+                runOnUiThread(() -> {
+                    if (track != null) {
+                        binding.tvMusicTrackTitle.setText(track.getOriginalFilename());
+                        binding.tvMusicDominantHz.setText("Dominant: " + track.getDominantHzDisplay());
+                        binding.tvMusicStatusBadge.setText("SHA: " + track.getShortSha256());
+                        binding.waveformScrubber.setWaveformData(track.getEnergyTrend());
+                    }
+                });
+            }
+
+            @Override
+            public void onPlaybackStateChanged(boolean isPlaying) {
+                runOnUiThread(() -> {
+                    binding.ivMusicPlayIcon.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
+                    binding.waveformScrubber.setPlaying(isPlaying);
+                });
+            }
+
+            @Override
+            public void onProgressUpdate(int currentMs, int totalMs, float percent) {
+                runOnUiThread(() -> {
+                    binding.waveformScrubber.setProgress(currentMs, totalMs);
+                    binding.tvMusicCurrentTime.setText(formatTime(currentMs));
+                    binding.tvMusicTotalTime.setText(formatTime(totalMs));
+                });
+            }
+
+            @Override
+            public void onWaveformUpdated(org.sabbir.edutrace.data.models.EduTraceMusicTrack track) {
+                runOnUiThread(() -> {
+                    if (track != null) {
+                        binding.waveformScrubber.setWaveformData(track.getEnergyTrend());
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    android.widget.Toast.makeText(TimerActivity.this, message, android.widget.Toast.LENGTH_SHORT).show();
+                });
+            }
+        };
+
+        musicPlayer.addListener(musicListener);
+
+        // Fetch Music Track Catalog from EduTrace API if empty
+        if (musicPlayer.getPlaylist().isEmpty()) {
+            musicPlayer.fetchCatalog(null);
+        } else {
+            org.sabbir.edutrace.data.models.EduTraceMusicTrack track = musicPlayer.getCurrentTrack();
+            if (track != null) {
+                binding.tvMusicTrackTitle.setText(track.getOriginalFilename());
+                binding.tvMusicDominantHz.setText("Dominant: " + track.getDominantHzDisplay());
+                binding.tvMusicStatusBadge.setText("SHA: " + track.getShortSha256());
+                binding.waveformScrubber.setWaveformData(track.getEnergyTrend());
             }
         }
+    }
+
+    private void showMusicPlaylistDialog() {
+        android.view.View dialogView = getLayoutInflater().inflate(R.layout.dialog_study_music_playlist, null);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setView(dialogView)
+                .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        }
+
+        androidx.recyclerview.widget.RecyclerView rv = dialogView.findViewById(R.id.rvMusicTracks);
+        rv.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
+
+        org.sabbir.edutrace.ui.adapters.EduTraceMusicAdapter adapter = new org.sabbir.edutrace.ui.adapters.EduTraceMusicAdapter();
+        rv.setAdapter(adapter);
+
+        adapter.setTracks(musicPlayer.getPlaylist(), musicPlayer.getCurrentTrackIndex(), musicPlayer.isPlaying());
+        adapter.setOnTrackClickListener((track, index) -> {
+            musicPlayer.playTrack(index);
+            adapter.setPlaybackState(index, true);
+        });
+
+        android.widget.ImageView btnRefresh = dialogView.findViewById(R.id.btnRefreshCatalog);
+        btnRefresh.setOnClickListener(v -> {
+            performHapticFeedback(v);
+            musicPlayer.fetchCatalog(() -> {
+                adapter.setTracks(musicPlayer.getPlaylist(), musicPlayer.getCurrentTrackIndex(), musicPlayer.isPlaying());
+            });
+        });
+
+        dialogView.findViewById(R.id.btnClosePlaylist).setOnClickListener(v -> dialog.dismiss());
+        dialog.show();
+    }
+
+    private String formatTime(int ms) {
+        if (ms <= 0) return "0:00";
+        int seconds = (ms / 1000) % 60;
+        int minutes = (ms / (1000 * 60));
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds);
     }
 
     private void loadIntelligenceData() {
@@ -392,6 +540,10 @@ public class TimerActivity extends AppCompatActivity {
         org.sabbir.edutrace.data.cloud.CloudDbManager.consolidateDailySessions(this, null, null, null);
 
         sessionManager.clearSession();
+
+        if (musicPlayer != null) {
+            musicPlayer.pause();
+        }
 
         // Stop Foreground Service when session is explicitly ended
         Intent serviceIntent = new Intent(this, org.sabbir.edutrace.services.StudyTimerService.class);
@@ -509,5 +661,8 @@ public class TimerActivity extends AppCompatActivity {
         super.onDestroy();
         timerHandler.removeCallbacks(timerRunnable);
         if (soundManager != null) soundManager.stop();
+        if (musicPlayer != null && musicListener != null) {
+            musicPlayer.removeListener(musicListener);
+        }
     }
 }

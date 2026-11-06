@@ -46,6 +46,7 @@ public class StudyTimerService extends Service {
         wardenHandler.removeCallbacks(wardenRunnable);
         timerHandler.removeCallbacks(timerRunnable);
         disableDND();
+        org.sabbir.edutrace.utils.EduTraceMusicPlayer.getInstance(this).pause();
         updateNotification("Study Session Finalized", reason);
         new Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             stopForeground(true);
