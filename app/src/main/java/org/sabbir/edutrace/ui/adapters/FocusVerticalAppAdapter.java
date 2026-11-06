@@ -93,3 +93,4 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
         }
     }
 }
+

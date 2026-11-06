@@ -83,3 +83,4 @@ public class FocusCuratedAppAdapter extends RecyclerView.Adapter<FocusCuratedApp
         }
     }
 }
+

@@ -100,3 +100,4 @@ public class FocusTaskAdapter extends RecyclerView.Adapter<FocusTaskAdapter.View
         }
     }
 }
+

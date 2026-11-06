@@ -17,3 +17,4 @@ public class FocusTaskItem {
     public boolean isCompleted() { return isCompleted; }
     public void setCompleted(boolean completed) { isCompleted = completed; }
 }
+

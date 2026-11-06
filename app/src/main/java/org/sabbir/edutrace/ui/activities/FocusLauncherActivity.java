@@ -366,3 +366,4 @@ public class FocusLauncherActivity extends AppCompatActivity {
         }
     }
 }
+

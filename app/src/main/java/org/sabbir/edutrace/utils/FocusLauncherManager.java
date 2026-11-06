@@ -320,3 +320,4 @@ public class FocusLauncherManager {
         saveFocusTasks(context, tasks);
     }
 }
+
