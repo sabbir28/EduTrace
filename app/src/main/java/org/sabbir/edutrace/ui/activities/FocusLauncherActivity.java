@@ -42,6 +42,7 @@ import org.sabbir.edutrace.ui.adapters.FocusCuratedAppAdapter;
 import org.sabbir.edutrace.ui.adapters.FocusTaskAdapter;
 import org.sabbir.edutrace.ui.adapters.FocusVerticalAppAdapter;
 import org.sabbir.edutrace.utils.FocusLauncherManager;
+import org.sabbir.edutrace.utils.ScientificMathEvaluator;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -83,6 +84,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
         setupDockActions();
         setupTaskActions();
         setupWeatherActions();
+        setupEssentialTools();
         setupHomeScreenLongPress();
         setupModeSwitching();
         startEntranceAnimations();
@@ -99,6 +101,17 @@ public class FocusLauncherActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (intent != null && Intent.ACTION_MAIN.equals(intent.getAction())) {
+            // Return to primary Home Dashboard when home button is pressed
+            if (currentMode != ScreenMode.DASHBOARD) {
+                switchMode(ScreenMode.DASHBOARD);
+            }
+        }
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         if (packageReceiver != null) {
@@ -111,6 +124,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (currentMode == ScreenMode.APP_DRAWER || currentMode == ScreenMode.REFLECT) {
+            hideKeyboard();
             switchMode(ScreenMode.DASHBOARD);
         } else if (currentMode == ScreenMode.MINIMALIST_HOME) {
             switchMode(ScreenMode.DASHBOARD);
@@ -471,8 +485,9 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                String q = s.toString();
+                String q = s.toString().trim();
                 binding.btnClearSearch.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
+                checkMathInSearch(q);
                 filterApps();
             }
 
@@ -563,30 +578,16 @@ public class FocusLauncherActivity extends AppCompatActivity {
     }
 
     private void setupDockActions() {
-        // 1. Phone
+        // 1. Phone / Quick Dialer
         binding.dockBtnPhone.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            try {
-                Intent dialIntent = new Intent(Intent.ACTION_DIAL);
-                startActivity(dialIntent);
-            } catch (Exception e) {
-                Toast.makeText(this, "Dialer unavailable", Toast.LENGTH_SHORT).show();
-            }
+            showQuickDialerDialog();
         });
 
-        // 2. Messages
+        // 2. Messages / Quick Messenger
         binding.dockBtnMessages.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            try {
-                Intent smsIntent = new Intent(Intent.ACTION_MAIN);
-                smsIntent.addCategory(Intent.CATEGORY_APP_MESSAGING);
-                startActivity(smsIntent);
-            } catch (Exception e) {
-                try {
-                    Intent fallback = new Intent(Intent.ACTION_VIEW, Uri.parse("sms:"));
-                    startActivity(fallback);
-                } catch (Exception ignored) {}
-            }
+            showQuickMessengerDialog();
         });
 
         // 3. Web Browser
@@ -620,6 +621,341 @@ public class FocusLauncherActivity extends AppCompatActivity {
                 switchMode(ScreenMode.APP_DRAWER);
             }
         });
+    }
+
+    private void setupEssentialTools() {
+        binding.btnToolCalculator.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            showScientificCalculatorDialog("");
+        });
+
+        binding.btnToolDialer.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            showQuickDialerDialog();
+        });
+
+        binding.btnToolMessenger.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            showQuickMessengerDialog();
+        });
+    }
+
+    private void checkMathInSearch(String q) {
+        if (q == null || q.isEmpty()) {
+            binding.layoutDrawerMathResult.setVisibility(View.GONE);
+            return;
+        }
+        if (q.equalsIgnoreCase("calc") || q.equalsIgnoreCase("calculator")) {
+            binding.layoutDrawerMathResult.setVisibility(View.VISIBLE);
+            binding.tvDrawerMathExpr.setText("Scientific Calculator");
+            binding.tvDrawerMathVal.setText("Tap to launch");
+            binding.layoutDrawerMathResult.setOnClickListener(v -> showScientificCalculatorDialog(""));
+            return;
+        }
+        if (isMathExpression(q)) {
+            ScientificMathEvaluator.EvaluationResult res = ScientificMathEvaluator.evaluate(q, isCalcDegreeMode);
+            if (res.success) {
+                binding.layoutDrawerMathResult.setVisibility(View.VISIBLE);
+                binding.tvDrawerMathExpr.setText(q);
+                binding.tvDrawerMathVal.setText("= " + res.formatted);
+                binding.layoutDrawerMathResult.setOnClickListener(v -> showScientificCalculatorDialog(q));
+                return;
+            }
+        }
+        binding.layoutDrawerMathResult.setVisibility(View.GONE);
+    }
+
+    private boolean isMathExpression(String q) {
+        return q.matches(".*[0-9].*") && (q.contains("+") || q.contains("-") || q.contains("*") ||
+                q.contains("/") || q.contains("^") || q.contains("%") || q.contains("!") ||
+                q.contains("sin") || q.contains("cos") || q.contains("tan") || q.contains("sqrt") ||
+                q.contains("pi") || q.contains("log") || q.contains("ln"));
+    }
+
+    private boolean isCalcDegreeMode = true;
+
+    private void showScientificCalculatorDialog(String initialExpr) {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View sheet = getLayoutInflater().inflate(R.layout.dialog_focus_scientific_calculator, null);
+        dialog.setContentView(sheet);
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+
+        TextView tvExpr = sheet.findViewById(R.id.tvCalcExpression);
+        TextView tvResult = sheet.findViewById(R.id.tvCalcResult);
+        TextView btnDegRad = sheet.findViewById(R.id.btnCalcDegRad);
+
+        StringBuilder exprBuilder = new StringBuilder(initialExpr != null ? initialExpr : "");
+        tvExpr.setText(exprBuilder.length() > 0 ? exprBuilder.toString() : "0");
+
+        Runnable updateCalcResult = () -> {
+            String expr = exprBuilder.toString().trim();
+            if (expr.isEmpty()) {
+                tvExpr.setText("0");
+                tvResult.setText("= 0");
+                return;
+            }
+            tvExpr.setText(expr);
+            ScientificMathEvaluator.EvaluationResult res = ScientificMathEvaluator.evaluate(expr, isCalcDegreeMode);
+            if (res.success) {
+                tvResult.setText("= " + res.formatted);
+                tvResult.setTextColor(getResources().getColor(R.color.elite_gold));
+            } else {
+                tvResult.setText("= ...");
+                tvResult.setTextColor(0xFF94A3B8);
+            }
+        };
+
+        if (exprBuilder.length() > 0) {
+            updateCalcResult.run();
+        }
+
+        btnDegRad.setText(isCalcDegreeMode ? "DEG" : "RAD");
+        btnDegRad.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            isCalcDegreeMode = !isCalcDegreeMode;
+            btnDegRad.setText(isCalcDegreeMode ? "DEG" : "RAD");
+            updateCalcResult.run();
+        });
+
+        // Keypad Append Listener
+        View.OnClickListener appendListener = v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (v instanceof TextView) {
+                String text = ((TextView) v).getText().toString();
+                if ("sin".equals(text) || "cos".equals(text) || "tan".equals(text) ||
+                        "ln".equals(text) || "log".equals(text) || "√".equals(text)) {
+                    if ("√".equals(text)) {
+                        exprBuilder.append("sqrt(");
+                    } else {
+                        exprBuilder.append(text).append("(");
+                    }
+                } else {
+                    exprBuilder.append(text);
+                }
+                updateCalcResult.run();
+            }
+        };
+
+        int[] appendIds = new int[]{
+                R.id.btnCalcSin, R.id.btnCalcCos, R.id.btnCalcTan, R.id.btnCalcPi, R.id.btnCalcE,
+                R.id.btnCalcLn, R.id.btnCalcLog, R.id.btnCalcSqrt, R.id.btnCalcPow,
+                R.id.btnCalcOpenParen, R.id.btnCalcCloseParen, R.id.btnCalcPercent,
+                R.id.btnCalcDivide, R.id.btnCalcMultiply, R.id.btnCalcMinus, R.id.btnCalcPlus,
+                R.id.btnCalc7, R.id.btnCalc8, R.id.btnCalc9,
+                R.id.btnCalc4, R.id.btnCalc5, R.id.btnCalc6,
+                R.id.btnCalc1, R.id.btnCalc2, R.id.btnCalc3,
+                R.id.btnCalc0, R.id.btnCalcDot, R.id.btnCalcFact
+        };
+        for (int id : appendIds) {
+            View b = sheet.findViewById(id);
+            if (b != null) b.setOnClickListener(appendListener);
+        }
+
+        // Clear AC
+        sheet.findViewById(R.id.btnCalcAC).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            exprBuilder.setLength(0);
+            updateCalcResult.run();
+        });
+
+        // Backspace DEL
+        sheet.findViewById(R.id.btnCalcDEL).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (exprBuilder.length() > 0) {
+                exprBuilder.deleteCharAt(exprBuilder.length() - 1);
+                updateCalcResult.run();
+            }
+        });
+        sheet.findViewById(R.id.btnCalcDEL).setOnLongClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            exprBuilder.setLength(0);
+            updateCalcResult.run();
+            return true;
+        });
+
+        // Equals (=)
+        sheet.findViewById(R.id.btnCalcEquals).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            String expr = exprBuilder.toString().trim();
+            if (!expr.isEmpty()) {
+                ScientificMathEvaluator.EvaluationResult res = ScientificMathEvaluator.evaluate(expr, isCalcDegreeMode);
+                if (res.success) {
+                    exprBuilder.setLength(0);
+                    exprBuilder.append(res.formatted.replace(",", ""));
+                    tvExpr.setText(exprBuilder.toString());
+                    tvResult.setText("= " + res.formatted);
+                } else {
+                    tvResult.setText(res.error != null ? res.error : "Error");
+                    tvResult.setTextColor(0xFFEF4444);
+                }
+            }
+        });
+
+        dialog.show();
+    }
+
+    private void showQuickDialerDialog() {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View sheet = getLayoutInflater().inflate(R.layout.dialog_focus_dialer, null);
+        dialog.setContentView(sheet);
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+
+        TextView tvNumber = sheet.findViewById(R.id.tvDialerNumber);
+        StringBuilder digits = new StringBuilder();
+
+        Runnable updateDisplay = () -> {
+            tvNumber.setText(digits.length() > 0 ? digits.toString() : "");
+            tvNumber.setHint(digits.length() == 0 ? "Dial a number..." : "");
+        };
+
+        View.OnClickListener keyListener = v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (v instanceof TextView) {
+                String digit = ((TextView) v).getText().toString();
+                digits.append(digit);
+                updateDisplay.run();
+            }
+        };
+
+        int[] keyIds = new int[]{
+                R.id.btnKey1, R.id.btnKey2, R.id.btnKey3,
+                R.id.btnKey4, R.id.btnKey5, R.id.btnKey6,
+                R.id.btnKey7, R.id.btnKey8, R.id.btnKey9,
+                R.id.btnKeyStar, R.id.btnKey0, R.id.btnKeyHash
+        };
+        for (int id : keyIds) {
+            View b = sheet.findViewById(id);
+            if (b != null) b.setOnClickListener(keyListener);
+        }
+
+        // Backspace
+        sheet.findViewById(R.id.btnDialerBackspace).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (digits.length() > 0) {
+                digits.deleteCharAt(digits.length() - 1);
+                updateDisplay.run();
+            }
+        });
+        sheet.findViewById(R.id.btnDialerBackspace).setOnLongClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            digits.setLength(0);
+            updateDisplay.run();
+            return true;
+        });
+
+        // Call Button
+        sheet.findViewById(R.id.btnDialerCall).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            String number = digits.toString().trim();
+            if (!number.isEmpty()) {
+                try {
+                    Intent callIntent = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(number)));
+                    startActivity(callIntent);
+                    dialog.dismiss();
+                } catch (Exception e) {
+                    Toast.makeText(this, "Dialer unavailable", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(this, "Please enter a phone number", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // System Dialer
+        sheet.findViewById(R.id.btnDialerOpenSystem).setOnClickListener(v -> {
+            dialog.dismiss();
+            try {
+                startActivity(new Intent(Intent.ACTION_DIAL));
+            } catch (Exception e) {
+                Toast.makeText(this, "Dialer unavailable", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        dialog.show();
+    }
+
+    private void showQuickMessengerDialog() {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View sheet = getLayoutInflater().inflate(R.layout.dialog_focus_messenger, null);
+        dialog.setContentView(sheet);
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+
+        EditText etRecipient = sheet.findViewById(R.id.etMsgRecipient);
+        EditText etBody = sheet.findViewById(R.id.etMsgBody);
+
+        // Template chips
+        TextView t1 = sheet.findViewById(R.id.templateStudyingNow);
+        TextView t2 = sheet.findViewById(R.id.templateFocusSession);
+        TextView t3 = sheet.findViewById(R.id.templateShareNotes);
+
+        View.OnClickListener templateClick = v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (v instanceof TextView) {
+                etBody.setText(((TextView) v).getText().toString());
+                etBody.setSelection(etBody.getText().length());
+            }
+        };
+        t1.setOnClickListener(templateClick);
+        t2.setOnClickListener(templateClick);
+        t3.setOnClickListener(templateClick);
+
+        // Send Button
+        sheet.findViewById(R.id.btnSendSms).setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            String recipient = etRecipient.getText().toString().trim();
+            String message = etBody.getText().toString().trim();
+
+            if (recipient.isEmpty() && message.isEmpty()) {
+                Toast.makeText(this, "Please enter recipient or message", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            try {
+                Uri smsUri = Uri.parse("smsto:" + (recipient.isEmpty() ? "" : Uri.encode(recipient)));
+                Intent smsIntent = new Intent(Intent.ACTION_SENDTO, smsUri);
+                if (!message.isEmpty()) {
+                    smsIntent.putExtra("sms_body", message);
+                }
+                startActivity(smsIntent);
+                dialog.dismiss();
+            } catch (Exception e) {
+                try {
+                    Intent fallback = new Intent(Intent.ACTION_VIEW);
+                    fallback.setData(Uri.parse("sms:"));
+                    if (!message.isEmpty()) fallback.putExtra("sms_body", message);
+                    startActivity(fallback);
+                    dialog.dismiss();
+                } catch (Exception ex) {
+                    Toast.makeText(this, "Messaging app unavailable", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        // System SMS
+        sheet.findViewById(R.id.btnMsgOpenSystem).setOnClickListener(v -> {
+            dialog.dismiss();
+            try {
+                Intent smsIntent = new Intent(Intent.ACTION_MAIN);
+                smsIntent.addCategory(Intent.CATEGORY_APP_MESSAGING);
+                startActivity(smsIntent);
+            } catch (Exception e) {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("sms:")));
+                } catch (Exception ex) {
+                    Toast.makeText(this, "Messages unavailable", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        dialog.show();
     }
 
     private void setupModeSwitching() {
