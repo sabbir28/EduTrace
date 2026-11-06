@@ -21,8 +21,13 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
         void onAppClick(FocusAppItem item);
     }
 
+    public interface OnAppLongClickListener {
+        void onAppLongClick(FocusAppItem item, View anchorView);
+    }
+
     private final List<FocusAppItem> apps = new ArrayList<>();
     private OnAppClickListener listener;
+    private OnAppLongClickListener longClickListener;
 
     public void setApps(List<FocusAppItem> newApps) {
         this.apps.clear();
@@ -34,6 +39,10 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
 
     public void setOnAppClickListener(OnAppClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setOnAppLongClickListener(OnAppLongClickListener longClickListener) {
+        this.longClickListener = longClickListener;
     }
 
     @NonNull
@@ -83,6 +92,15 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
                     if (listener != null) listener.onAppClick(item);
                 });
             });
+        });
+
+        holder.itemView.setOnLongClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            if (longClickListener != null) {
+                longClickListener.onAppLongClick(item, v);
+                return true;
+            }
+            return false;
         });
     }
 

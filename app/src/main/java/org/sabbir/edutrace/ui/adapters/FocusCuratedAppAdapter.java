@@ -21,8 +21,13 @@ public class FocusCuratedAppAdapter extends RecyclerView.Adapter<FocusCuratedApp
         void onAppClick(FocusAppItem item);
     }
 
+    public interface OnAppLongClickListener {
+        void onAppLongClick(FocusAppItem item, View anchorView);
+    }
+
     private final List<FocusAppItem> apps = new ArrayList<>();
     private OnAppClickListener listener;
+    private OnAppLongClickListener longClickListener;
 
     public void setApps(List<FocusAppItem> newApps) {
         this.apps.clear();
@@ -34,6 +39,10 @@ public class FocusCuratedAppAdapter extends RecyclerView.Adapter<FocusCuratedApp
 
     public void setOnAppClickListener(OnAppClickListener listener) {
         this.listener = listener;
+    }
+
+    public void setOnAppLongClickListener(OnAppLongClickListener longClickListener) {
+        this.longClickListener = longClickListener;
     }
 
     @NonNull
@@ -62,6 +71,15 @@ public class FocusCuratedAppAdapter extends RecyclerView.Adapter<FocusCuratedApp
                     if (listener != null) listener.onAppClick(item);
                 });
             });
+        });
+
+        holder.itemView.setOnLongClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            if (longClickListener != null) {
+                longClickListener.onAppLongClick(item, v);
+                return true;
+            }
+            return false;
         });
     }
 

@@ -23,9 +23,11 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,6 +40,8 @@ public class FocusLauncherManager {
     private static final String TAG = "FocusLauncherManager";
     private static final String PREFS_NAME = "EduTrace_Focus_Launcher_Prefs";
     private static final String KEY_FOCUS_TASKS = "focus_daily_tasks_json";
+    private static final String KEY_PINNED_APPS = "focus_pinned_apps_set";
+    private static final String KEY_MANUALLY_HIDDEN_APPS = "focus_hidden_apps_set";
     public static final long DEFAULT_APP_LIMIT_MS = 5 * 60 * 60 * 1000; // 5 Hours Quota
 
     private static volatile FocusLauncherManager instance;
@@ -74,6 +78,11 @@ public class FocusLauncherManager {
         List<ResolveInfo> activities = pm.queryIntentActivities(launcherIntent, 0);
         Map<String, Long> usageMap = getTodayUsageMap(context);
 
+        boolean ghostingEnabled = context.getSharedPreferences("Settings", Context.MODE_PRIVATE)
+                .getBoolean("app_ghosting_enabled", true);
+        Set<String> pinnedSet = getPinnedPackages(context);
+        Set<String> hiddenSet = getHiddenPackages(context);
+
         List<FocusAppItem> scanned = new ArrayList<>();
         List<FocusAppItem> allowed = new ArrayList<>();
         List<FocusAppItem> vanished = new ArrayList<>();
@@ -106,18 +115,20 @@ public class FocusLauncherManager {
             long usageMs = usageMap.containsKey(pkg) ? usageMap.get(pkg) : 0L;
             item.setUsageDurationMs(usageMs);
 
-            // The 5-Hour Dynamic Ghosting / Vanishing Rule
-            // Distracting / Social apps & Games that exceed 5 hours
-            // completely vanish from the launcher interface ("like it never existed").
-            if (!item.isDailyEssential() && usageMs >= DEFAULT_APP_LIMIT_MS) {
+            // Manual Hide OR The 5-Hour Dynamic Ghosting / Vanishing Rule
+            boolean isManuallyHidden = hiddenSet.contains(pkg);
+            boolean isManuallyPinned = pinnedSet.contains(pkg);
+            boolean shouldVanish = isManuallyHidden || (ghostingEnabled && !item.isDailyEssential() && usageMs >= DEFAULT_APP_LIMIT_MS);
+
+            if (shouldVanish) {
                 item.setVanished(true);
                 vanished.add(item);
             } else {
                 item.setVanished(false);
                 allowed.add(item);
 
-                // Top curated list: AI tools, EduTrace, Books/Audio/Study tools
-                if (item.isAiTool() || isCuratedRecommendation(pkg, label)) {
+                // Top curated list: User Pinned OR AI tools OR Curated study recommendations
+                if (isManuallyPinned || item.isAiTool() || isCuratedRecommendation(pkg, label)) {
                     item.setCurated(true);
                     curated.add(item);
                 }
@@ -543,6 +554,96 @@ public class FocusLauncherManager {
             else shapes[4]++;
         }
         return shapes;
+    }
+
+    public Set<String> getPinnedPackages(Context context) {
+        if (context == null) return new HashSet<>();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return new HashSet<>(prefs.getStringSet(KEY_PINNED_APPS, new HashSet<>()));
+    }
+
+    public boolean isPinned(Context context, String pkg) {
+        if (pkg == null) return false;
+        return getPinnedPackages(context).contains(pkg);
+    }
+
+    public void togglePin(Context context, String pkg) {
+        if (context == null || pkg == null) return;
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet(KEY_PINNED_APPS, new HashSet<>()));
+        if (set.contains(pkg)) {
+            set.remove(pkg);
+        } else {
+            set.add(pkg);
+        }
+        prefs.edit().putStringSet(KEY_PINNED_APPS, set).apply();
+    }
+
+    public Set<String> getHiddenPackages(Context context) {
+        if (context == null) return new HashSet<>();
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return new HashSet<>(prefs.getStringSet(KEY_MANUALLY_HIDDEN_APPS, new HashSet<>()));
+    }
+
+    public boolean isManuallyHidden(Context context, String pkg) {
+        if (pkg == null) return false;
+        return getHiddenPackages(context).contains(pkg);
+    }
+
+    public void toggleHide(Context context, String pkg) {
+        if (context == null || pkg == null) return;
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        Set<String> set = new HashSet<>(prefs.getStringSet(KEY_MANUALLY_HIDDEN_APPS, new HashSet<>()));
+        if (set.contains(pkg)) {
+            set.remove(pkg);
+        } else {
+            set.add(pkg);
+        }
+        prefs.edit().putStringSet(KEY_MANUALLY_HIDDEN_APPS, set).apply();
+    }
+
+    public static void requestUninstallApp(Context context, String packageName) {
+        if (context == null || packageName == null) return;
+        if (packageName.equals(context.getPackageName())) {
+            Toast.makeText(context, "Cannot uninstall EduTrace Focus Launcher while active", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            Intent uninstallIntent = new Intent(Intent.ACTION_DELETE);
+            uninstallIntent.setData(android.net.Uri.parse("package:" + packageName));
+            context.startActivity(uninstallIntent);
+        } catch (Exception e) {
+            Toast.makeText(context, "Failed to launch uninstaller: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public static void openAppInfo(Context context, String packageName) {
+        if (context == null || packageName == null) return;
+        try {
+            Intent infoIntent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            infoIntent.setData(android.net.Uri.parse("package:" + packageName));
+            infoIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(infoIntent);
+        } catch (Exception e) {
+            Toast.makeText(context, "Unable to open app info", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    public static void openPlayStore(Context context, String packageName) {
+        if (context == null || packageName == null) return;
+        try {
+            Intent marketIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=" + packageName));
+            marketIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(marketIntent);
+        } catch (Exception e) {
+            try {
+                Intent webIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + packageName));
+                webIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(webIntent);
+            } catch (Exception ex) {
+                Toast.makeText(context, "Play Store unavailable", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
 
