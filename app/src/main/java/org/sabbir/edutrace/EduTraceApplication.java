@@ -39,6 +39,13 @@ public class EduTraceApplication extends Application {
         } catch (Throwable t) {
             t.printStackTrace();
         }
+
+        try {
+            // Evaluates and applies dynamic app icon randomization (e.g. Company Brand Icon) once daily
+            org.sabbir.edutrace.utils.AppIconManager.maybeRandomizeIcon(this, false);
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 }
 

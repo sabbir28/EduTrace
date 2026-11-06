@@ -22,6 +22,7 @@ import org.sabbir.edutrace.R;
 import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.cloud.CloudUser;
 import org.sabbir.edutrace.databinding.ActivitySettingsBinding;
+import org.sabbir.edutrace.utils.AppIconManager;
 import org.sabbir.edutrace.utils.LocalVaultManager;
 import org.sabbir.edutrace.utils.ObbManager;
 import org.sabbir.edutrace.utils.UpdateManager;
@@ -47,6 +48,7 @@ public class SettingsActivity extends AppCompatActivity {
         binding.toolbar.setNavigationOnClickListener(v -> finish());
 
         setupTheme();
+        setupAppIcon();
         setupLanguage();
         setupLibraryMode();
         setupLocalVault();
@@ -59,6 +61,7 @@ public class SettingsActivity extends AppCompatActivity {
         super.onResume();
         updateVaultUI();
         updateCloudUI();
+        updateAppIconUI();
     }
 
     private void setupLocalVault() {
@@ -444,6 +447,39 @@ public class SettingsActivity extends AppCompatActivity {
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
             }
         });
+    }
+
+    private void setupAppIcon() {
+        boolean isDynamic = AppIconManager.isDynamicIconEnabled(this);
+        binding.switchDynamicIcon.setChecked(isDynamic);
+
+        updateAppIconUI();
+
+        binding.switchDynamicIcon.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            AppIconManager.setDynamicIconEnabled(this, isChecked);
+            updateAppIconUI();
+            Toast.makeText(this, isChecked ? "Dynamic icon randomization active" : "Dynamic icon disabled (default restored)", Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnSwitchIconManual.setOnClickListener(v -> {
+            String nextVariant = AppIconManager.toggleIcon(this);
+            updateAppIconUI();
+            boolean isCompany = AppIconManager.VARIANT_COMPANY.equals(nextVariant);
+            Toast.makeText(this, isCompany ? "Switched to Company Brand Icon 🚀" : "Switched to Classic EduTrace Icon 🎓", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void updateAppIconUI() {
+        boolean isCompany = AppIconManager.isCompanyIconActive(this);
+        if (isCompany) {
+            binding.ivCurrentIconPreview.setImageResource(R.drawable.company_icon);
+            binding.tvCurrentIconName.setText("Company Brand Edition");
+            binding.tvCurrentIconDesc.setText("Official company icon active on home screen");
+        } else {
+            binding.ivCurrentIconPreview.setImageResource(R.mipmap.ic_launcher);
+            binding.tvCurrentIconName.setText("Classic EduTrace");
+            binding.tvCurrentIconDesc.setText("Default study tracker emblem active");
+        }
     }
 
     private void setupLanguage() {

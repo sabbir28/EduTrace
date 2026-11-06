@@ -74,6 +74,126 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- App Icon Section -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="App Icon &amp; Launcher"
+                android:textColor="#94A3B8"
+                android:textSize="14sp"
+                android:textAllCaps="true"
+                android:letterSpacing="0.1"
+                android:fontFamily="sans-serif-medium"
+                android:layout_marginBottom="12dp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1E293B"
+                app:strokeWidth="0dp"
+                android:layout_marginBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:layout_alignParentStart="true"
+                            android:layout_toStartOf="@+id/switchDynamicIcon"
+                            android:layout_marginEnd="16dp">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Random Dynamic Icon"
+                                android:textColor="@android:color/white"
+                                android:textSize="16sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Randomly showcases company brand icon on launcher"
+                                android:textColor="#94A3B8"
+                                android:textSize="12sp"
+                                android:layout_marginTop="2dp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.switchmaterial.SwitchMaterial
+                            android:id="@+id/switchDynamicIcon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentEnd="true"
+                            android:layout_centerVertical="true" />
+                    </RelativeLayout>
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#334155"
+                        android:layout_marginVertical="12dp" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <ImageView
+                            android:id="@+id/ivCurrentIconPreview"
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:src="@drawable/company_icon"
+                            android:contentDescription="Active Icon" />
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical"
+                            android:layout_marginStart="12dp"
+                            android:layout_marginEnd="8dp">
+
+                            <TextView
+                                android:id="@+id/tvCurrentIconName"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Company Brand Edition"
+                                android:textColor="@android:color/white"
+                                android:textSize="14sp"
+                                android:fontFamily="sans-serif-medium" />
+
+                            <TextView
+                                android:id="@+id/tvCurrentIconDesc"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Official company brand logo"
+                                android:textColor="#94A3B8"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnSwitchIconManual"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Switch"
+                            android:textColor="#0F172A"
+                            app:backgroundTint="#FACC15"
+                            app:cornerRadius="10dp" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Language Section -->
             <TextView
                 android:layout_width="wrap_content"
