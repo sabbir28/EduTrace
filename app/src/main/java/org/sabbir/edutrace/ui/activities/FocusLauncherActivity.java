@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.app.AppOpsManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
@@ -43,8 +44,8 @@ import java.util.Locale;
 /**
  * Minimalist Focus Home Launcher for EduTrace.
  * Replaces distracting phone home screens with an education-first environment.
- * Features AI & daily utility curation, interactive study checklist, and the
- * 5-Hour Dynamic App Ghosting / Vanishing Engine.
+ * Features AI & daily utility curation, intelligent app categorization (Games, AI & Study,
+ * Social, Tools), interactive study checklist, and the 5-Hour Dynamic App Ghosting Engine.
  */
 public class FocusLauncherActivity extends AppCompatActivity {
 
@@ -85,12 +86,10 @@ public class FocusLauncherActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         refreshLauncherData();
-        updateDefaultLauncherBanner();
     }
 
     @Override
     public void onBackPressed() {
-        // As a Home launcher, Back returns to the clean Minimalist Home or Dashboard instead of closing
         if (currentMode == ScreenMode.APP_DRAWER || currentMode == ScreenMode.REFLECT) {
             switchMode(ScreenMode.DASHBOARD);
         } else if (currentMode == ScreenMode.MINIMALIST_HOME) {
@@ -99,7 +98,6 @@ public class FocusLauncherActivity extends AppCompatActivity {
     }
 
     private void setupHeaderData() {
-        // Date & Day format
         SimpleDateFormat dayFormat = new SimpleDateFormat("EEEE", Locale.getDefault());
         SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d", Locale.getDefault());
         SimpleDateFormat clockFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
@@ -150,45 +148,33 @@ public class FocusLauncherActivity extends AppCompatActivity {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             startActivity(new Intent(this, SettingsActivity.class));
         });
-
-        // Default Launcher Banner
-        binding.bannerDefaultLauncher.setOnClickListener(v -> {
-            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            FocusLauncherManager.requestSetDefaultLauncher(this);
-        });
-
-        binding.btnSetDefaultLauncherBanner.setOnClickListener(v -> {
-            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
-            FocusLauncherManager.requestSetDefaultLauncher(this);
-        });
     }
 
-    private void updateDefaultLauncherBanner() {
-        boolean isDefault = FocusLauncherManager.isDefaultLauncher(this);
-        if (isDefault) {
-            binding.layoutDefaultLauncherBanner.setBackgroundResource(R.drawable.bg_default_active_pill);
-            binding.ivDefaultShield.setColorFilter(0xFF10B981);
-            binding.tvDefaultBannerTitle.setText("Default Focus Shield Active ✓");
-            binding.tvDefaultBannerDesc.setText("Cognitive focus locked & 5-hour distraction vanishing active");
-            binding.btnSetDefaultLauncherBanner.setVisibility(View.GONE);
-        } else {
-            binding.layoutDefaultLauncherBanner.setBackgroundResource(R.drawable.bg_default_launcher_pill);
-            binding.ivDefaultShield.setColorFilter(0xFFF59E0B);
-            binding.tvDefaultBannerTitle.setText("Set as Default Home Launcher");
-            binding.tvDefaultBannerDesc.setText("Protect your focus with automatic 5-hour app vanishing");
-            binding.btnSetDefaultLauncherBanner.setVisibility(View.VISIBLE);
-        }
-    }
-
+    /**
+     * Professional default launcher prompt. Asks once in a clean modal dialog
+     * rather than cluttering the home screen with permanent banners.
+     */
     private void checkDefaultLauncherPrompt() {
-        if (!FocusLauncherManager.isDefaultLauncher(this)) {
-            // Delay slightly so activity renders smoothly before showing system chooser
-            binding.getRoot().postDelayed(() -> {
-                if (!isFinishing() && !FocusLauncherManager.isDefaultLauncher(this)) {
-                    FocusLauncherManager.requestSetDefaultLauncher(this);
-                }
-            }, 800);
-        }
+        if (FocusLauncherManager.isDefaultLauncher(this)) return;
+        SharedPreferences prefs = getSharedPreferences("FocusLauncherPrefs", MODE_PRIVATE);
+        boolean asked = prefs.getBoolean("asked_default_launcher", false);
+        if (asked) return;
+
+        binding.getRoot().postDelayed(() -> {
+            if (!isFinishing() && !FocusLauncherManager.isDefaultLauncher(this)) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Set EduTrace as Default Home")
+                        .setMessage("EduTrace Focus Launcher eliminates distractions, curates AI tools, and automatically vanishes apps & games that exceed 5 hours.\n\nWould you like to set EduTrace as your default Home launcher?")
+                        .setPositiveButton("Set as Default", (dialog, which) -> {
+                            prefs.edit().putBoolean("asked_default_launcher", true).apply();
+                            FocusLauncherManager.requestSetDefaultLauncher(this);
+                        })
+                        .setNegativeButton("Maybe Later", (dialog, which) -> {
+                            prefs.edit().putBoolean("asked_default_launcher", true).apply();
+                        })
+                        .show();
+            }
+        }, 800);
     }
 
     private void setupAdapters() {
@@ -223,15 +209,20 @@ public class FocusLauncherActivity extends AppCompatActivity {
         binding.rvFocusTasks.setAdapter(taskAdapter);
     }
 
+    private void filterApps() {
+        String q = binding.etSpotlightSearch.getText().toString();
+        List<FocusAppItem> filtered = manager.getAllowedApps(q);
+        verticalAdapter.setApps(filtered);
+        binding.tvDrawerCount.setText("ALLOWED APPS (" + filtered.size() + ")");
+    }
+
     private void refreshLauncherData() {
         manager.reloadApps(this);
 
         List<FocusAppItem> curated = manager.getCuratedApps();
         curatedAdapter.setApps(curated);
 
-        List<FocusAppItem> allowed = manager.getAllowedApps(binding.etSpotlightSearch.getText().toString());
-        verticalAdapter.setApps(allowed);
-        binding.tvDrawerCount.setText("ALLOWED APPS (" + allowed.size() + ")");
+        filterApps();
 
         List<FocusAppItem> vanished = manager.getVanishedApps();
         vanishedAdapter.setApps(vanished);
@@ -243,6 +234,28 @@ public class FocusLauncherActivity extends AppCompatActivity {
         // Screen time analytics in Reflect screen
         binding.tvPeakHour.setText(manager.getFormattedPeakHour(this));
         binding.tvLateNightUsage.setText(manager.getLateNightAppsSummary(this));
+
+        // Gaming analytics & information
+        List<FocusAppItem> games = manager.getGamingApps();
+        binding.tvGamingCountBadge.setText(games.size() + " Games");
+        long gamingMs = manager.getTotalGamingTimeMs();
+        long gHours = gamingMs / (3600 * 1000);
+        long gMins = (gamingMs % (3600 * 1000)) / (60 * 1000);
+        binding.tvGamingTimeSummary.setText("Gaming Today: " + gHours + "h " + gMins + "m • " + (gamingMs > 0 ? "Tracking" : "Zero Distraction"));
+
+        if (!games.isEmpty()) {
+            StringBuilder sb = new StringBuilder("Detected: ");
+            for (int i = 0; i < Math.min(3, games.size()); i++) {
+                if (i > 0) sb.append(" • ");
+                sb.append(games.get(i).getAppLabel());
+                if (games.get(i).getUsageDurationMs() > 0) {
+                    sb.append(" (").append(games.get(i).getFormattedUsage()).append(")");
+                }
+            }
+            binding.tvGamingAppsList.setText(sb.toString());
+        } else {
+            binding.tvGamingAppsList.setText("No games detected on this device. Pure study mode active!");
+        }
 
         long totalMs = manager.getTotalScreenTimeMs(this);
         long hours = totalMs / (3600 * 1000);
@@ -263,9 +276,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
             public void onTextChanged(CharSequence s, int start, int before, int count) {
                 String q = s.toString();
                 binding.btnClearSearch.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
-                List<FocusAppItem> filtered = manager.getAllowedApps(q);
-                verticalAdapter.setApps(filtered);
-                binding.tvDrawerCount.setText("SEARCH RESULTS (" + filtered.size() + ")");
+                filterApps();
             }
 
             @Override
@@ -319,21 +330,13 @@ public class FocusLauncherActivity extends AppCompatActivity {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             showAddTaskDialog();
         });
-
-        binding.btnEditTile.setOnClickListener(v -> {
-            Toast.makeText(this, "Tile configuration saved", Toast.LENGTH_SHORT).show();
-        });
-
-        binding.btnAddTile.setOnClickListener(v -> {
-            showAddTaskDialog();
-        });
     }
 
     private void setupWeatherActions() {
         binding.btnWeatherRefresh.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             v.animate().rotationBy(360f).setDuration(600).start();
-            Toast.makeText(this, "Weather forecast updated ☀️", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Weather forecast updated", Toast.LENGTH_SHORT).show();
         });
 
         binding.btnWeatherEdit.setOnClickListener(v -> {

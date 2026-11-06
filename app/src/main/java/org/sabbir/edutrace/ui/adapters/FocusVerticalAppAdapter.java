@@ -54,7 +54,20 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
             holder.ivIcon.setImageResource(R.mipmap.ic_launcher);
         }
 
-        holder.tvAiTag.setVisibility(item.isAiTool() ? View.VISIBLE : View.GONE);
+        String badge = item.getCategoryBadgeText();
+        if (badge != null && !badge.isEmpty()) {
+            holder.tvAiTag.setVisibility(View.VISIBLE);
+            holder.tvAiTag.setText(badge);
+            if (item.isGame()) {
+                holder.tvAiTag.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFEF4444)); // red for games
+            } else if (item.isAiTool()) {
+                holder.tvAiTag.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFF59E0B)); // gold for AI
+            } else {
+                holder.tvAiTag.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF3B82F6)); // blue for study/social
+            }
+        } else {
+            holder.tvAiTag.setVisibility(View.GONE);
+        }
 
         String usage = item.getFormattedUsage();
         if (usage != null && !usage.isEmpty()) {

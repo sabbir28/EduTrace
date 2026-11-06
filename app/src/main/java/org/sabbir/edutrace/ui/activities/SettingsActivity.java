@@ -23,6 +23,7 @@ import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.cloud.CloudUser;
 import org.sabbir.edutrace.databinding.ActivitySettingsBinding;
 import org.sabbir.edutrace.utils.AppIconManager;
+import org.sabbir.edutrace.utils.FocusLauncherManager;
 import org.sabbir.edutrace.utils.LocalVaultManager;
 import org.sabbir.edutrace.utils.ObbManager;
 import org.sabbir.edutrace.utils.UpdateManager;
@@ -49,6 +50,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         setupTheme();
         setupAppIcon();
+        setupFocusLauncherSettings();
         setupLanguage();
         setupLibraryMode();
         setupLocalVault();
@@ -62,6 +64,7 @@ public class SettingsActivity extends AppCompatActivity {
         updateVaultUI();
         updateCloudUI();
         updateAppIconUI();
+        updateDefaultLauncherStatus();
     }
 
     private void setupLocalVault() {
@@ -479,6 +482,38 @@ public class SettingsActivity extends AppCompatActivity {
             binding.ivCurrentIconPreview.setImageResource(R.mipmap.ic_launcher);
             binding.tvCurrentIconName.setText("Classic EduTrace");
             binding.tvCurrentIconDesc.setText("Default study tracker emblem active");
+        }
+    }
+
+    private void setupFocusLauncherSettings() {
+        updateDefaultLauncherStatus();
+
+        binding.btnSetDefaultLauncherSettings.setOnClickListener(v -> {
+            FocusLauncherManager.requestSetDefaultLauncher(this);
+        });
+
+        boolean isGhosting = prefs.getBoolean("app_ghosting_enabled", true);
+        binding.switchAppGhosting.setChecked(isGhosting);
+        binding.switchAppGhosting.setOnCheckedChangeListener((btn, isChecked) -> {
+            prefs.edit().putBoolean("app_ghosting_enabled", isChecked).apply();
+            Toast.makeText(this, isChecked ? "5-Hour dynamic app vanishing enabled" : "Dynamic app vanishing disabled", Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnOpenFocusLauncherSettings.setOnClickListener(v -> {
+            startActivity(new Intent(this, FocusLauncherActivity.class));
+        });
+    }
+
+    private void updateDefaultLauncherStatus() {
+        boolean isDefault = FocusLauncherManager.isDefaultLauncher(this);
+        if (isDefault) {
+            binding.tvDefaultLauncherStatus.setText("Status: EduTrace Active (Default Home) ✓");
+            binding.tvDefaultLauncherStatus.setTextColor(0xFF10B981);
+            binding.btnSetDefaultLauncherSettings.setText("Manage");
+        } else {
+            binding.tvDefaultLauncherStatus.setText("Status: Not set (Default system home active)");
+            binding.tvDefaultLauncherStatus.setTextColor(0xFF94A3B8);
+            binding.btnSetDefaultLauncherSettings.setText("Set Default");
         }
     }
 

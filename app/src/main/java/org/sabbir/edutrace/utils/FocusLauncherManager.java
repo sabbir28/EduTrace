@@ -96,20 +96,20 @@ public class FocusLauncherManager {
 
             FocusAppItem item = new FocusAppItem(pkg, activity, label, ri.loadIcon(pm));
 
-            // Categorization
-            boolean isAi = isAiToolPackage(pkg, label);
-            boolean isEssential = isEssentialDailyUtility(pkg, label) || myPackage.equals(pkg);
-            item.setAiTool(isAi);
-            item.setDailyEssential(isEssential);
+            // Intelligent Categorization (Games, AI & Study, Social, Essentials, Productivity)
+            AppCategoryManager.categorizeApp(item, ri.activityInfo.applicationInfo);
+            if (myPackage.equals(pkg)) {
+                item.setDailyEssential(true);
+            }
 
             // Screen time today
             long usageMs = usageMap.containsKey(pkg) ? usageMap.get(pkg) : 0L;
             item.setUsageDurationMs(usageMs);
 
             // The 5-Hour Dynamic Ghosting / Vanishing Rule
-            // Distracting / Social apps (Facebook, Instagram, TikTok, Games) that exceed 5 hours
+            // Distracting / Social apps & Games that exceed 5 hours
             // completely vanish from the launcher interface ("like it never existed").
-            if (!isEssential && usageMs >= DEFAULT_APP_LIMIT_MS) {
+            if (!item.isDailyEssential() && usageMs >= DEFAULT_APP_LIMIT_MS) {
                 item.setVanished(true);
                 vanished.add(item);
             } else {
@@ -117,7 +117,7 @@ public class FocusLauncherManager {
                 allowed.add(item);
 
                 // Top curated list: AI tools, EduTrace, Books/Audio/Study tools
-                if (isAi || isCuratedRecommendation(pkg, label)) {
+                if (item.isAiTool() || isCuratedRecommendation(pkg, label)) {
                     item.setCurated(true);
                     curated.add(item);
                 }
@@ -147,18 +147,51 @@ public class FocusLauncherManager {
     }
 
     public List<FocusAppItem> getAllowedApps(String query) {
-        if (query == null || query.trim().isEmpty()) {
-            return new ArrayList<>(activeAllowedApps);
-        }
-        String cleanQuery = query.toLowerCase(Locale.getDefault()).trim();
+        return getFilteredApps(query, FocusAppItem.CAT_ALL);
+    }
+
+    public List<FocusAppItem> getFilteredApps(String query, String category) {
+        String cleanQuery = (query != null) ? query.toLowerCase(Locale.getDefault()).trim() : "";
         List<FocusAppItem> filtered = new ArrayList<>();
         for (FocusAppItem app : activeAllowedApps) {
-            if (app.getAppLabel().toLowerCase(Locale.getDefault()).contains(cleanQuery) ||
-                app.getPackageName().toLowerCase(Locale.getDefault()).contains(cleanQuery)) {
-                filtered.add(app);
+            // Category filter
+            if (category != null && !category.isEmpty() && !FocusAppItem.CAT_ALL.equalsIgnoreCase(category)) {
+                if (!category.equalsIgnoreCase(app.getCategory())) {
+                    continue;
+                }
             }
+
+            // Search query filter
+            if (!cleanQuery.isEmpty()) {
+                boolean match = app.getAppLabel().toLowerCase(Locale.getDefault()).contains(cleanQuery)
+                        || app.getPackageName().toLowerCase(Locale.getDefault()).contains(cleanQuery);
+                if (!match) continue;
+            }
+
+            filtered.add(app);
         }
         return filtered;
+    }
+
+    public List<FocusAppItem> getGamingApps() {
+        List<FocusAppItem> games = new ArrayList<>();
+        for (FocusAppItem app : allInstalledApps) {
+            if (app.isGame()) {
+                games.add(app);
+            }
+        }
+        Collections.sort(games, (a, b) -> Long.compare(b.getUsageDurationMs(), a.getUsageDurationMs()));
+        return games;
+    }
+
+    public long getTotalGamingTimeMs() {
+        long total = 0;
+        for (FocusAppItem app : allInstalledApps) {
+            if (app.isGame()) {
+                total += app.getUsageDurationMs();
+            }
+        }
+        return total;
     }
 
     public List<FocusAppItem> getCuratedApps() {

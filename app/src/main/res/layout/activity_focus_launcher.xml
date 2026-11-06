@@ -32,14 +32,19 @@
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/tvUserAvatar"
+                <FrameLayout
+                    android:id="@+id/layoutUserAvatar"
                     android:layout_width="32dp"
                     android:layout_height="32dp"
-                    android:background="@drawable/bg_curated_app_badge"
-                    android:gravity="center"
-                    android:text="👤"
-                    android:textSize="16sp" />
+                    android:background="@drawable/bg_curated_app_badge">
+
+                    <ImageView
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/ic_stats"
+                        app:tint="@color/elite_gold" />
+                </FrameLayout>
 
                 <TextView
                     android:id="@+id/tvGreetingName"
@@ -106,74 +111,6 @@
                     app:tint="#94A3B8" />
             </LinearLayout>
         </LinearLayout>
-
-        <!-- Prominent Default Launcher Activation Banner -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/bannerDefaultLauncher"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            app:cardBackgroundColor="@android:color/transparent"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="0dp">
-
-            <LinearLayout
-                android:id="@+id/layoutDefaultLauncherBanner"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_default_launcher_pill"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                android:paddingHorizontal="14dp"
-                android:paddingVertical="10dp">
-
-                <ImageView
-                    android:id="@+id/ivDefaultShield"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:src="@drawable/ic_shield"
-                    app:tint="#F59E0B" />
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvDefaultBannerTitle"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-bold"
-                        android:text="Set as Default Home Launcher"
-                        android:textColor="#FFFFFF"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvDefaultBannerDesc"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Protect your focus with automatic 5-hour app vanishing"
-                        android:textColor="#CBD5E1"
-                        android:textSize="10sp" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/btnSetDefaultLauncherBanner"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_notification_badge"
-                    android:backgroundTint="#F59E0B"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="6dp"
-                    android:text="SET DEFAULT"
-                    android:textColor="#0F172A"
-                    android:textSize="10sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
         <!-- Day Progress Tracker Bar (Image 2 Header) -->
         <LinearLayout
@@ -729,43 +666,7 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- Bottom Tile Edit & Add Buttons (Image 1 Footer) -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:gravity="center"
-                    android:orientation="horizontal">
 
-                    <TextView
-                        android:id="@+id/btnEditTile"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="@drawable/bg_tile_pill"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:fontFamily="sans-serif-medium"
-                        android:paddingHorizontal="18dp"
-                        android:paddingVertical="8dp"
-                        android:text="✏️ Edit Tile"
-                        android:textColor="#94A3B8"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/btnAddTile"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:background="@drawable/bg_tile_pill"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:fontFamily="sans-serif-medium"
-                        android:paddingHorizontal="18dp"
-                        android:paddingVertical="8dp"
-                        android:text="+ Add Tile"
-                        android:textColor="#94A3B8"
-                        android:textSize="12sp" />
-                </LinearLayout>
 
             </LinearLayout>
         </androidx.core.widget.NestedScrollView>
@@ -950,6 +851,8 @@
                     android:visibility="gone"
                     app:tint="#64748B" />
             </LinearLayout>
+
+
 
             <TextView
                 android:id="@+id/tvDrawerCount"
@@ -1380,6 +1283,73 @@
                                 <TextView android:layout_width="25dp" android:layout_height="wrap_content" android:gravity="end" android:text="0" android:textColor="#64748B" android:textSize="10sp" />
                             </LinearLayout>
                         </LinearLayout>
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Gaming & Entertainment Insights Card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    app:cardBackgroundColor="@android:color/transparent"
+                    app:cardCornerRadius="22dp"
+                    app:cardElevation="0dp"
+                    app:strokeWidth="0dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_glass_card"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:fontFamily="sans-serif-bold"
+                                android:text="Gaming &amp; Entertainment Balance"
+                                android:textColor="#FFFFFF"
+                                android:textSize="15sp" />
+
+                            <TextView
+                                android:id="@+id/tvGamingCountBadge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/bg_notification_badge"
+                                android:backgroundTint="#EF4444"
+                                android:paddingHorizontal="8dp"
+                                android:paddingVertical="3dp"
+                                android:text="0 Games"
+                                android:textColor="#FFFFFF"
+                                android:textSize="10sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvGamingTimeSummary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:fontFamily="sans-serif-medium"
+                            android:text="Gaming Today: 0m &#8226; Focus Shield Active"
+                            android:textColor="#E2E8F0"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/tvGamingAppsList"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
+                            android:text="Games will automatically vanish if played for > 5h today"
+                            android:textColor="#94A3B8"
+                            android:textSize="11sp" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 

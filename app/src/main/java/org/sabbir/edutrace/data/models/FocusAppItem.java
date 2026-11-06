@@ -3,6 +3,13 @@ package org.sabbir.edutrace.data.models;
 import android.graphics.drawable.Drawable;
 
 public class FocusAppItem {
+    public static final String CAT_ALL = "all";
+    public static final String CAT_GAMES = "games";
+    public static final String CAT_AI_STUDY = "ai_study";
+    public static final String CAT_SOCIAL = "social";
+    public static final String CAT_ESSENTIALS = "essentials";
+    public static final String CAT_PRODUCTIVITY = "productivity";
+
     private String packageName;
     private String activityName;
     private String appLabel;
@@ -12,6 +19,8 @@ public class FocusAppItem {
     private boolean isAiTool;
     private boolean isDailyEssential;
     private boolean isCurated;
+    private boolean isGame;
+    private String category = CAT_PRODUCTIVITY;
 
     public FocusAppItem(String packageName, String activityName, String appLabel, Drawable icon) {
         this.packageName = packageName;
@@ -41,6 +50,22 @@ public class FocusAppItem {
     public boolean isCurated() { return isCurated; }
     public void setCurated(boolean curated) { this.isCurated = curated; }
 
+    public boolean isGame() { return isGame; }
+    public void setGame(boolean game) { this.isGame = game; }
+
+    public String getCategory() { return category != null ? category : CAT_ALL; }
+    public void setCategory(String category) { this.category = category; }
+
+    public String getCategoryBadgeText() {
+        if (isAiTool) return "AI TOOL";
+        if (isGame) return "GAME";
+        if (CAT_STUDY_ALIAS.equals(category) || CAT_AI_STUDY.equals(category)) return "STUDY";
+        if (CAT_SOCIAL.equals(category)) return "SOCIAL";
+        return "";
+    }
+
+    private static final String CAT_STUDY_ALIAS = "study";
+
     public String getFormattedUsage() {
         if (usageDurationMs <= 0) return "";
         long minutes = (usageDurationMs / (1000 * 60));
@@ -52,4 +77,3 @@ public class FocusAppItem {
         }
     }
 }
-
