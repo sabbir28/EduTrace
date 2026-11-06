@@ -294,3 +294,4 @@ public class EmailDnsValidator {
         return DnsResult.failure(domain, "DNS check failed: Domain '" + domain + "' has no registered mail server (MX record).");
     }
 }
+
