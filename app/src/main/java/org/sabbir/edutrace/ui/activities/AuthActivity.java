@@ -20,6 +20,7 @@ import org.sabbir.edutrace.R;
 import org.sabbir.edutrace.data.cloud.CloudDbManager;
 import org.sabbir.edutrace.data.cloud.CloudUser;
 import org.sabbir.edutrace.databinding.ActivityAuthBinding;
+import org.sabbir.edutrace.utils.EmailDnsValidator;
 import org.sabbir.edutrace.utils.EmailManager;
 
 public class AuthActivity extends AppCompatActivity {
@@ -154,69 +155,104 @@ public class AuthActivity extends AppCompatActivity {
             }
 
             setLoading(true);
-            // 1. Check if user already exists
-            CloudDbManager.checkUserAvailability(username, email, new CloudDbManager.AvailabilityCallback() {
+            // Advanced DNS & MX Record Validation: Ensures email domain actually exists and accepts mail
+            EmailDnsValidator.validateEmailAsync(email, new EmailDnsValidator.DnsCallback() {
                 @Override
-                public void onAvailable() {
-                    // 2. Dispatch OTP to email
-                    String otpCode = EmailManager.generateOtp(email);
-                    EmailManager.sendOtpEmail(email, username, otpCode, "Account Registration", new EmailManager.EmailCallback() {
+                public void onVerified(String verifiedEmail, String domain, String mailServer) {
+                    // DNS verification passed! Check username/email availability
+                    CloudDbManager.checkUserAvailability(username, verifiedEmail, new CloudDbManager.AvailabilityCallback() {
                         @Override
-                        public void onSuccess() {
-                            setLoading(false);
-                            showRegistrationOtpDialog(username, email, password, displayName);
+                        public void onAvailable() {
+                            // Dispatch OTP to email
+                            String otpCode = EmailManager.generateOtp(verifiedEmail);
+                            EmailManager.sendOtpEmail(verifiedEmail, username, otpCode, "Account Registration", new EmailManager.EmailCallback() {
+                                @Override
+                                public void onSuccess() {
+                                    setLoading(false);
+                                    showRegistrationOtpDialog(username, verifiedEmail, password, displayName);
+                                }
+
+                                @Override
+                                public void onError(String error) {
+                                    setLoading(false);
+                                    // Fallback dialog for direct registration if SMTP email dispatch fails
+                                    new AlertDialog.Builder(AuthActivity.this)
+                                            .setTitle("Direct Registration Option")
+                                            .setMessage("Could not dispatch OTP email (" + error + "). Would you like to proceed with direct cloud registration?")
+                                            .setPositiveButton("Register Directly", (dialog, which) -> {
+                                                setLoading(true);
+                                                CloudDbManager.register(AuthActivity.this, username, verifiedEmail, password, displayName, new CloudDbManager.AuthCallback() {
+                                                    @Override
+                                                    public void onSuccess(CloudUser user) {
+                                                        onAuthSuccess(user);
+                                                    }
+
+                                                    @Override
+                                                    public void onError(String message) {
+                                                        setLoading(false);
+                                                        Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
+                                                    }
+                                                });
+                                            })
+                                            .setNegativeButton("Cancel", null)
+                                            .show();
+                                }
+                            });
                         }
 
                         @Override
-                        public void onError(String error) {
+                        public void onError(String message) {
                             setLoading(false);
-                            // Fallback dialog for direct registration if SMTP email dispatch fails
-                            new AlertDialog.Builder(AuthActivity.this)
-                                    .setTitle("Direct Registration Option")
-                                    .setMessage("Could not dispatch OTP email (" + error + "). Would you like to proceed with direct cloud registration?")
-                                    .setPositiveButton("Register Directly", (dialog, which) -> {
-                                        setLoading(true);
-                                        CloudDbManager.register(AuthActivity.this, username, email, password, displayName, new CloudDbManager.AuthCallback() {
-                                            @Override
-                                            public void onSuccess(CloudUser user) {
-                                                onAuthSuccess(user);
-                                            }
-
-                                            @Override
-                                            public void onError(String message) {
-                                                setLoading(false);
-                                                Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
-                                            }
-                                        });
-                                    })
-                                    .setNegativeButton("Cancel", null)
-                                    .show();
+                            Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
                         }
                     });
                 }
 
                 @Override
-                public void onError(String message) {
+                public void onError(String failedEmail, String domain, String reason) {
                     setLoading(false);
-                    Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
+                    binding.tilEmail.setError(reason);
+                    Toast.makeText(AuthActivity.this, "Email DNS verification failed: " + reason, Toast.LENGTH_LONG).show();
                 }
             });
 
         } else {
-            setLoading(true);
-            CloudDbManager.login(this, username, password, new CloudDbManager.AuthCallback() {
-                @Override
-                public void onSuccess(CloudUser user) {
-                    onAuthSuccess(user);
-                }
+            // Sign-in mode: If user entered an email address, verify its DNS domain before login
+            if (username.contains("@")) {
+                setLoading(true);
+                EmailDnsValidator.validateEmailAsync(username, new EmailDnsValidator.DnsCallback() {
+                    @Override
+                    public void onVerified(String verifiedEmail, String domain, String mailServer) {
+                        performCloudLogin(username, password);
+                    }
 
-                @Override
-                public void onError(String message) {
-                    setLoading(false);
-                    Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
-                }
-            });
+                    @Override
+                    public void onError(String failedEmail, String domain, String reason) {
+                        setLoading(false);
+                        binding.tilUsername.setError(reason);
+                        Toast.makeText(AuthActivity.this, "Email DNS verification failed: " + reason, Toast.LENGTH_LONG).show();
+                    }
+                });
+            } else {
+                setLoading(true);
+                performCloudLogin(username, password);
+            }
         }
+    }
+
+    private void performCloudLogin(String username, String password) {
+        CloudDbManager.login(this, username, password, new CloudDbManager.AuthCallback() {
+            @Override
+            public void onSuccess(CloudUser user) {
+                onAuthSuccess(user);
+            }
+
+            @Override
+            public void onError(String message) {
+                setLoading(false);
+                Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void showRegistrationOtpDialog(String username, String email, String password, String displayName) {
@@ -289,35 +325,55 @@ public class AuthActivity extends AppCompatActivity {
                         Toast.makeText(this, "Please enter your username or email", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    setLoading(true);
-                    CloudDbManager.findUserEmail(target, new CloudDbManager.EmailLookupCallback() {
-                        @Override
-                        public void onFound(String username, String email) {
-                            String otp = EmailManager.generateOtp(email);
-                            EmailManager.sendOtpEmail(email, username, otp, "Password Reset", new EmailManager.EmailCallback() {
-                                @Override
-                                public void onSuccess() {
-                                    setLoading(false);
-                                    showPasswordResetDialog(username, email);
-                                }
+                    if (target.contains("@")) {
+                        setLoading(true);
+                        EmailDnsValidator.validateEmailAsync(target, new EmailDnsValidator.DnsCallback() {
+                            @Override
+                            public void onVerified(String verifiedEmail, String domain, String mailServer) {
+                                performPasswordResetLookup(verifiedEmail);
+                            }
 
-                                @Override
-                                public void onError(String error) {
-                                    setLoading(false);
-                                    Toast.makeText(AuthActivity.this, "Failed to send reset code: " + error, Toast.LENGTH_LONG).show();
-                                }
-                            });
-                        }
-
-                        @Override
-                        public void onError(String message) {
-                            setLoading(false);
-                            Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
-                        }
-                    });
+                            @Override
+                            public void onError(String failedEmail, String domain, String reason) {
+                                setLoading(false);
+                                Toast.makeText(AuthActivity.this, "Email DNS verification failed: " + reason, Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    } else {
+                        setLoading(true);
+                        performPasswordResetLookup(target);
+                    }
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void performPasswordResetLookup(String target) {
+        CloudDbManager.findUserEmail(target, new CloudDbManager.EmailLookupCallback() {
+            @Override
+            public void onFound(String username, String email) {
+                String otp = EmailManager.generateOtp(email);
+                EmailManager.sendOtpEmail(email, username, otp, "Password Reset", new EmailManager.EmailCallback() {
+                    @Override
+                    public void onSuccess() {
+                        setLoading(false);
+                        showPasswordResetDialog(username, email);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        setLoading(false);
+                        Toast.makeText(AuthActivity.this, "Failed to send reset code: " + error, Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                setLoading(false);
+                Toast.makeText(AuthActivity.this, message, Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void showPasswordResetDialog(String username, String email) {

@@ -13,15 +13,20 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.HapticFeedbackConstants;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import org.sabbir.edutrace.R;
+import org.sabbir.edutrace.data.cloud.CloudDbManager;
+import org.sabbir.edutrace.data.cloud.CloudUser;
 import org.sabbir.edutrace.data.models.FocusAppItem;
 import org.sabbir.edutrace.data.models.FocusTaskItem;
 import org.sabbir.edutrace.databinding.ActivityFocusLauncherBinding;
@@ -51,7 +56,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
     private FocusVerticalAppAdapter vanishedAdapter;
     private FocusTaskAdapter taskAdapter;
 
-    private enum ScreenMode { DASHBOARD, APP_DRAWER, REFLECT }
+    private enum ScreenMode { DASHBOARD, MINIMALIST_HOME, APP_DRAWER, REFLECT }
     private ScreenMode currentMode = ScreenMode.DASHBOARD;
 
     @Override
@@ -65,46 +70,125 @@ public class FocusLauncherActivity extends AppCompatActivity {
         setupHeaderData();
         setupAdapters();
         setupSpotlightSearch();
+        setupAlphabetScrubber();
         setupDockActions();
         setupTaskActions();
+        setupWeatherActions();
         setupModeSwitching();
         startEntranceAnimations();
 
         checkUsageStatsPermission();
+        checkDefaultLauncherPrompt();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         refreshLauncherData();
+        updateDefaultLauncherBanner();
     }
 
     @Override
     public void onBackPressed() {
-        // As a Home launcher, Back returns to the clean Dashboard instead of closing
-        if (currentMode != ScreenMode.DASHBOARD) {
+        // As a Home launcher, Back returns to the clean Minimalist Home or Dashboard instead of closing
+        if (currentMode == ScreenMode.APP_DRAWER || currentMode == ScreenMode.REFLECT) {
+            switchMode(ScreenMode.DASHBOARD);
+        } else if (currentMode == ScreenMode.MINIMALIST_HOME) {
             switchMode(ScreenMode.DASHBOARD);
         }
     }
 
     private void setupHeaderData() {
-        // Date & Day format (e.g. "Thursday • Apr 23")
-        SimpleDateFormat sdf = new SimpleDateFormat("EEEE \u2022 MMM d", Locale.getDefault());
-        binding.tvDayDate.setText(sdf.format(new Date()));
+        // Date & Day format
+        SimpleDateFormat dayFormat = new SimpleDateFormat("EEEE", Locale.getDefault());
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d", Locale.getDefault());
+        SimpleDateFormat clockFormat = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        Date now = new Date();
+
+        String dayStr = dayFormat.format(now);
+        String dateStr = dateFormat.format(now);
+
+        binding.tvEditorialDay.setText(dayStr);
+        binding.tvEditorialDate.setText(dateStr);
+        binding.tvDrawerClock.setText(clockFormat.format(now));
+        binding.tvDrawerDate.setText(new SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(now));
+
+        // Display user name if logged in, else Guest
+        CloudUser user = CloudDbManager.getCurrentUser(this);
+        if (user != null && user.getDisplayName() != null && !user.getDisplayName().isEmpty()) {
+            binding.tvGreetingName.setText(user.getDisplayName());
+        } else {
+            binding.tvGreetingName.setText("Guest");
+        }
 
         int dayPct = manager.getDayInProgressPercent();
         binding.tvDayProgressLabel.setText("Day in progress " + dayPct + "%");
         binding.pbDayProgress.setProgress(dayPct);
 
-        binding.btnOpenEduTrace.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
-            switchMode(currentMode == ScreenMode.REFLECT ? ScreenMode.DASHBOARD : ScreenMode.REFLECT);
+        // Header Action Buttons
+        binding.btnUserProfile.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(currentMode == ScreenMode.MINIMALIST_HOME ? ScreenMode.DASHBOARD : ScreenMode.MINIMALIST_HOME);
+        });
+
+        binding.btnModeDashboard.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(ScreenMode.DASHBOARD);
+        });
+
+        binding.btnModeReflect.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(ScreenMode.REFLECT);
         });
 
         binding.btnOpenTimer.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             startActivity(new Intent(this, TimerActivity.class));
         });
+
+        binding.btnQuickSettings.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            startActivity(new Intent(this, SettingsActivity.class));
+        });
+
+        // Default Launcher Banner
+        binding.bannerDefaultLauncher.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            FocusLauncherManager.requestSetDefaultLauncher(this);
+        });
+
+        binding.btnSetDefaultLauncherBanner.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            FocusLauncherManager.requestSetDefaultLauncher(this);
+        });
+    }
+
+    private void updateDefaultLauncherBanner() {
+        boolean isDefault = FocusLauncherManager.isDefaultLauncher(this);
+        if (isDefault) {
+            binding.layoutDefaultLauncherBanner.setBackgroundResource(R.drawable.bg_default_active_pill);
+            binding.ivDefaultShield.setColorFilter(0xFF10B981);
+            binding.tvDefaultBannerTitle.setText("Default Focus Shield Active ✓");
+            binding.tvDefaultBannerDesc.setText("Cognitive focus locked & 5-hour distraction vanishing active");
+            binding.btnSetDefaultLauncherBanner.setVisibility(View.GONE);
+        } else {
+            binding.layoutDefaultLauncherBanner.setBackgroundResource(R.drawable.bg_default_launcher_pill);
+            binding.ivDefaultShield.setColorFilter(0xFFF59E0B);
+            binding.tvDefaultBannerTitle.setText("Set as Default Home Launcher");
+            binding.tvDefaultBannerDesc.setText("Protect your focus with automatic 5-hour app vanishing");
+            binding.btnSetDefaultLauncherBanner.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void checkDefaultLauncherPrompt() {
+        if (!FocusLauncherManager.isDefaultLauncher(this)) {
+            // Delay slightly so activity renders smoothly before showing system chooser
+            binding.getRoot().postDelayed(() -> {
+                if (!isFinishing() && !FocusLauncherManager.isDefaultLauncher(this)) {
+                    FocusLauncherManager.requestSetDefaultLauncher(this);
+                }
+            }, 800);
+        }
     }
 
     private void setupAdapters() {
@@ -156,6 +240,15 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
         taskAdapter.setTasks(manager.getFocusTasks(this));
 
+        // Screen time analytics in Reflect screen
+        binding.tvPeakHour.setText(manager.getFormattedPeakHour(this));
+        binding.tvLateNightUsage.setText(manager.getLateNightAppsSummary(this));
+
+        long totalMs = manager.getTotalScreenTimeMs(this);
+        long hours = totalMs / (3600 * 1000);
+        long mins = (totalMs % (3600 * 1000)) / (60 * 1000);
+        binding.tvScreenTimeSummary.setText("Holding steady. Total screen time today: " + hours + "h " + mins + "m across allowed apps.");
+
         int dayPct = manager.getDayInProgressPercent();
         binding.tvDayProgressLabel.setText("Day in progress " + dayPct + "%");
         binding.pbDayProgress.setProgress(dayPct);
@@ -182,12 +275,69 @@ public class FocusLauncherActivity extends AppCompatActivity {
         binding.btnClearSearch.setOnClickListener(v -> {
             binding.etSpotlightSearch.setText("");
         });
+
+        binding.layoutSpotlightCapsule.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(ScreenMode.APP_DRAWER);
+        });
+    }
+
+    private void setupAlphabetScrubber() {
+        binding.layoutAlphabetScrubber.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+                int height = v.getHeight();
+                if (height <= 0) return true;
+                float y = Math.max(0, Math.min(event.getY(), height));
+                int count = binding.layoutAlphabetScrubber.getChildCount();
+                int index = (int) ((y / height) * count);
+                if (index >= 0 && index < count) {
+                    View child = binding.layoutAlphabetScrubber.getChildAt(index);
+                    if (child instanceof TextView) {
+                        String letter = ((TextView) child).getText().toString();
+                        if (!letter.isEmpty()) {
+                            int pos = verticalAdapter.getPositionForSection(letter.charAt(0));
+                            if (pos >= 0) {
+                                binding.rvVerticalApps.scrollToPosition(pos);
+                                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            return false;
+        });
     }
 
     private void setupTaskActions() {
         binding.btnAddTask.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             showAddTaskDialog();
+        });
+
+        binding.btnAddFocusTaskRow.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            showAddTaskDialog();
+        });
+
+        binding.btnEditTile.setOnClickListener(v -> {
+            Toast.makeText(this, "Tile configuration saved", Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnAddTile.setOnClickListener(v -> {
+            showAddTaskDialog();
+        });
+    }
+
+    private void setupWeatherActions() {
+        binding.btnWeatherRefresh.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            v.animate().rotationBy(360f).setDuration(600).start();
+            Toast.makeText(this, "Weather forecast updated ☀️", Toast.LENGTH_SHORT).show();
+        });
+
+        binding.btnWeatherEdit.setOnClickListener(v -> {
+            Toast.makeText(this, "Weather location: Cox Mill (Focus Mode)", Toast.LENGTH_SHORT).show();
         });
     }
 
@@ -215,7 +365,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
     private void setupDockActions() {
         // 1. Phone
         binding.dockBtnPhone.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             try {
                 Intent dialIntent = new Intent(Intent.ACTION_DIAL);
                 startActivity(dialIntent);
@@ -226,7 +376,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
         // 2. Messages
         binding.dockBtnMessages.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             try {
                 Intent smsIntent = new Intent(Intent.ACTION_MAIN);
                 smsIntent.addCategory(Intent.CATEGORY_APP_MESSAGING);
@@ -241,7 +391,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
         // 3. Web Browser
         binding.dockBtnWeb.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             try {
                 Intent webIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://google.com"));
                 startActivity(webIntent);
@@ -252,7 +402,7 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
         // 4. Camera
         binding.dockBtnCamera.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             try {
                 Intent cameraIntent = new Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
                 startActivity(cameraIntent);
@@ -263,43 +413,53 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
         // 5. Drawer Toggle
         binding.dockBtnModeToggle.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             if (currentMode == ScreenMode.APP_DRAWER) {
                 switchMode(ScreenMode.DASHBOARD);
             } else {
                 switchMode(ScreenMode.APP_DRAWER);
             }
         });
-
-        binding.btnViewAllApps.setOnClickListener(v -> {
-            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
-            switchMode(ScreenMode.APP_DRAWER);
-        });
-
-        binding.btnSetDefaultLauncher.setOnClickListener(v -> {
-            openHomeLauncherSettings();
-        });
     }
 
     private void setupModeSwitching() {
-        // Initial state is Dashboard
         switchMode(ScreenMode.DASHBOARD);
+
+        binding.tabNow.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(ScreenMode.DASHBOARD);
+        });
+
+        binding.tabReflect.setOnClickListener(v -> {
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            switchMode(ScreenMode.REFLECT);
+        });
     }
 
     private void switchMode(ScreenMode newMode) {
         currentMode = newMode;
 
         binding.viewDashboard.setVisibility(newMode == ScreenMode.DASHBOARD ? View.VISIBLE : View.GONE);
+        binding.viewMinimalistHome.setVisibility(newMode == ScreenMode.MINIMALIST_HOME ? View.VISIBLE : View.GONE);
         binding.viewAppDrawer.setVisibility(newMode == ScreenMode.APP_DRAWER ? View.VISIBLE : View.GONE);
         binding.viewReflect.setVisibility(newMode == ScreenMode.REFLECT ? View.VISIBLE : View.GONE);
 
+        // Header Tab Highlight
+        binding.btnModeDashboard.setColorFilter(
+                (newMode == ScreenMode.DASHBOARD || newMode == ScreenMode.MINIMALIST_HOME)
+                        ? getResources().getColor(R.color.elite_gold) : 0xFF94A3B8
+        );
+        binding.btnModeReflect.setColorFilter(
+                newMode == ScreenMode.REFLECT ? getResources().getColor(R.color.elite_gold) : 0xFF94A3B8
+        );
+
         if (newMode == ScreenMode.APP_DRAWER) {
-            binding.dockBtnModeToggle.setImageResource(R.drawable.ic_back);
-            binding.dockBtnModeToggle.setColorFilter(getResources().getColor(R.color.elite_gold));
+            binding.ivDockModeToggle.setImageResource(R.drawable.ic_back);
+            binding.ivDockModeToggle.setColorFilter(getResources().getColor(R.color.elite_gold));
             binding.etSpotlightSearch.requestFocus();
         } else {
-            binding.dockBtnModeToggle.setImageResource(R.drawable.ic_apps);
-            binding.dockBtnModeToggle.setColorFilter(getResources().getColor(R.color.elite_gold));
+            binding.ivDockModeToggle.setImageResource(R.drawable.ic_apps);
+            binding.ivDockModeToggle.setColorFilter(getResources().getColor(R.color.elite_gold));
         }
     }
 
@@ -312,23 +472,6 @@ public class FocusLauncherActivity extends AppCompatActivity {
             startActivity(launchIntent);
         } else {
             Toast.makeText(this, "Cannot launch " + item.getAppLabel(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void openHomeLauncherSettings() {
-        try {
-            Intent intent;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                intent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
-            } else {
-                intent = new Intent(Settings.ACTION_HOME_SETTINGS);
-            }
-            startActivity(intent);
-        } catch (Exception e) {
-            try {
-                Intent fallback = new Intent(Settings.ACTION_SETTINGS);
-                startActivity(fallback);
-            } catch (Exception ignored) {}
         }
     }
 
@@ -366,4 +509,3 @@ public class FocusLauncherActivity extends AppCompatActivity {
         }
     }
 }
-

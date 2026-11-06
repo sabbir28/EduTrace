@@ -11,9 +11,9 @@
     android:padding="6dp">
 
     <FrameLayout
-        android:layout_width="50dp"
-        android:layout_height="50dp"
-        android:background="@drawable/circle_blue">
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:background="@drawable/bg_curated_app_badge">
 
         <ImageView
             android:id="@+id/ivAppIcon"

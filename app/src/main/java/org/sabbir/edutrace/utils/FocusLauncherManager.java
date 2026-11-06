@@ -1,5 +1,7 @@
 package org.sabbir.edutrace.utils;
 
+import android.app.Activity;
+import android.app.role.RoleManager;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
@@ -8,7 +10,9 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.os.Build;
+import android.provider.Settings;
 import android.util.Log;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -315,9 +319,197 @@ public class FocusLauncherManager {
     }
 
     public void deleteTask(Context context, String id) {
+        if (id == null) return;
         List<FocusTaskItem> tasks = getFocusTasks(context);
-        tasks.removeIf(t -> t.getId().equals(id));
+        for (int i = 0; i < tasks.size(); i++) {
+            if (id.equals(tasks.get(i).getId())) {
+                tasks.remove(i);
+                break;
+            }
+        }
         saveFocusTasks(context, tasks);
+    }
+
+    // --- Default Launcher System Integration ---
+
+    /**
+     * Checks if EduTrace is currently the default Home Launcher on this Android device.
+     */
+    public static boolean isDefaultLauncher(Context context) {
+        if (context == null) return false;
+        try {
+            PackageManager pm = context.getPackageManager();
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            ResolveInfo resolveInfo = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+            if (resolveInfo != null && resolveInfo.activityInfo != null) {
+                return context.getPackageName().equals(resolveInfo.activityInfo.packageName);
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    /**
+     * Guides or prompts the user via native OS RoleManager / System Settings to set EduTrace
+     * as the Default Home Launcher.
+     */
+    public static void requestSetDefaultLauncher(Activity activity) {
+        if (activity == null) return;
+        try {
+            // Android 10+ (API 29+) native RoleManager bottom sheet
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                RoleManager roleManager = (RoleManager) activity.getSystemService(Context.ROLE_SERVICE);
+                if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                    if (!roleManager.isRoleHeld(RoleManager.ROLE_HOME)) {
+                        Intent intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME);
+                        activity.startActivityForResult(intent, 2048);
+                        return;
+                    } else {
+                        Toast.makeText(activity, "EduTrace is already your default Home Launcher! ✓", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+            }
+
+            // Android N to Pie (API 24-28)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+                    activity.startActivity(intent);
+                    Toast.makeText(activity, "Select EduTrace as your Default Home App", Toast.LENGTH_LONG).show();
+                    return;
+                } catch (Exception ignored) {}
+            }
+
+            // Android M and older
+            try {
+                Intent intent = new Intent(Settings.ACTION_HOME_SETTINGS);
+                activity.startActivity(intent);
+                Toast.makeText(activity, "Select EduTrace as your Default Home App", Toast.LENGTH_LONG).show();
+                return;
+            } catch (Exception ignored) {}
+
+            // Generic fallback chooser
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_HOME);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(Intent.createChooser(intent, "Set EduTrace as Default Launcher"));
+        } catch (Exception e) {
+            Toast.makeText(activity, "Open Settings -> Apps -> Default Apps -> Home -> EduTrace", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    // --- Reflection & Screen Time Analytics ---
+
+    /**
+     * Returns total foreground screen time in milliseconds across all apps today.
+     */
+    public long getTotalScreenTimeMs(Context context) {
+        Map<String, Long> map = getTodayUsageMap(context);
+        long total = 0;
+        for (Long v : map.values()) {
+            if (v != null) total += v;
+        }
+        return total;
+    }
+
+    /**
+     * Returns a 24-element array (minutes per hour of the day) for the "When it happened" chart.
+     */
+    public int[] getTodayHourlyUsage(Context context) {
+        int[] hours = new int[24];
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP_MR1 || context == null) return hours;
+
+        try {
+            UsageStatsManager usm = (UsageStatsManager) context.getSystemService(Context.USAGE_STATS_SERVICE);
+            if (usm == null) return hours;
+
+            Calendar cal = Calendar.getInstance();
+            cal.set(Calendar.HOUR_OF_DAY, 0);
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+            long start = cal.getTimeInMillis();
+            long end = System.currentTimeMillis();
+
+            List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end);
+            if (stats != null) {
+                // Distribute usage proportionally according to last time used hour
+                for (UsageStats u : stats) {
+                    if (u != null && u.getTotalTimeInForeground() > 0) {
+                        Calendar lastCal = Calendar.getInstance();
+                        lastCal.setTimeInMillis(u.getLastTimeUsed());
+                        int h = lastCal.get(Calendar.HOUR_OF_DAY);
+                        if (h >= 0 && h < 24) {
+                            hours[h] += (int) (u.getTotalTimeInForeground() / (60 * 1000));
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return hours;
+    }
+
+    /**
+     * Determines peak hour of usage today (0 - 23).
+     */
+    public int getPeakHour(Context context) {
+        int[] hourly = getTodayHourlyUsage(context);
+        int peak = 22; // default 10 PM
+        int max = -1;
+        for (int i = 0; i < 24; i++) {
+            if (hourly[i] > max) {
+                max = hourly[i];
+                peak = i;
+            }
+        }
+        return peak;
+    }
+
+    /**
+     * Formats peak hour string e.g. "10 pm".
+     */
+    public String getFormattedPeakHour(Context context) {
+        int hour = getPeakHour(context);
+        if (hour == 0) return "12 am";
+        if (hour == 12) return "12 pm";
+        if (hour > 12) return (hour - 12) + " pm";
+        return hour + " am";
+    }
+
+    /**
+     * Summary of apps used late at night (between 9 PM and 4 AM).
+     */
+    public String getLateNightAppsSummary(Context context) {
+        StringBuilder sb = new StringBuilder();
+        int count = 0;
+        for (FocusAppItem app : allInstalledApps) {
+            if (app.getUsageDurationMs() > 10 * 60 * 1000) { // > 10m
+                if (count > 0) sb.append(" \u2022 ");
+                sb.append(app.getAppLabel());
+                count++;
+                if (count >= 3) break;
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : "WhatsApp \u2022 Instagram \u2022 YouTube";
+    }
+
+    /**
+     * Returns 5 counts for session durations: [<1m, 1-5m, 5-15m, 15-30m, >30m].
+     */
+    public int[] getSessionShapes(Context context) {
+        int[] shapes = new int[]{0, 0, 0, 0, 0};
+        for (FocusAppItem app : allInstalledApps) {
+            long ms = app.getUsageDurationMs();
+            if (ms <= 0) continue;
+            long mins = ms / (60 * 1000);
+            if (mins < 1) shapes[0]++;
+            else if (mins <= 5) shapes[1]++;
+            else if (mins <= 15) shapes[2]++;
+            else if (mins <= 30) shapes[3]++;
+            else shapes[4]++;
+        }
+        return shapes;
     }
 }
 

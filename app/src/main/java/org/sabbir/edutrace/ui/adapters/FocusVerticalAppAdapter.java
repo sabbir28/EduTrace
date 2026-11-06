@@ -78,6 +78,25 @@ public class FocusVerticalAppAdapter extends RecyclerView.Adapter<FocusVerticalA
         return apps.size();
     }
 
+    /**
+     * Finds first app index matching alphabetical section char (e.g. 'A', 'B', '#')
+     */
+    public int getPositionForSection(char section) {
+        char target = Character.toUpperCase(section);
+        for (int i = 0; i < apps.size(); i++) {
+            String label = apps.get(i).getAppLabel();
+            if (label != null && !label.isEmpty()) {
+                char first = Character.toUpperCase(label.charAt(0));
+                if (target == '#') {
+                    if (!Character.isLetter(first)) return i;
+                } else if (first >= target) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
     static class ViewHolder extends RecyclerView.ViewHolder {
         ImageView ivIcon;
         TextView tvLabel;
