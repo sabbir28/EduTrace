@@ -206,5 +206,20 @@ public class EduTraceMusicTrack implements Serializable {
         }
         return "Acoustic";
     }
+
+    /**
+     * Distraction-free title: Never shows the raw song name or filename while playing
+     * to keep students completely focused without song identification distractions.
+     */
+    public String getDisplayTitle(boolean isPlaying, int index) {
+        if (isPlaying) {
+            if (dominantFrequencyHz > 0) {
+                return String.format(java.util.Locale.US, "Focus Soundscape • %.0f Hz", dominantFrequencyHz);
+            }
+            return "Deep Focus Soundscape";
+        }
+        int num = (index >= 0) ? (index + 1) : 1;
+        return "Focus Soundscape #" + num;
+    }
 }
 

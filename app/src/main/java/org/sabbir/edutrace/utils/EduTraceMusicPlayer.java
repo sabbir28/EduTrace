@@ -55,6 +55,9 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
     private boolean isShuffle = false;
     private boolean isRepeat = false;
     private float currentVolume = 1.0f;
+    private boolean hasMoreTracks = true;
+    private boolean isLoadingMore = false;
+    private static final int PAGE_SIZE = 50;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<PlaybackListener> listeners = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -137,17 +140,24 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
     }
 
     /**
-     * Loads playlist from EduTrace Music API (/api/music/tracks or /api/frequency-audio/tracks).
+     * Loads initial playlist from EduTrace Music API (/api/music/tracks or /api/frequency-audio/tracks)
+     * using scalable pagination (handles 1 track up to 100k+ tracks).
      */
     public void fetchCatalog(Runnable onComplete) {
+        fetchCatalog(0, true, onComplete);
+    }
+
+    public void fetchCatalog(int offset, boolean clearExisting, Runnable onComplete) {
         CloudApiClient.cloudExecutor.execute(() -> {
             String baseUrl = CloudApiClient.getServerUrl(appContext);
-            Log.d(TAG, "Fetching EduTrace music catalog from: " + baseUrl);
+            Log.d(TAG, "Fetching EduTrace music catalog from: " + baseUrl + " (offset=" + offset + ")");
 
-            CloudApiClient.ApiResponse resp = CloudApiClient.sendApiRequest(appContext, "music/tracks", "GET", null, null);
+            String endpoint = "music/tracks?limit=" + PAGE_SIZE + "&offset=" + offset;
+            CloudApiClient.ApiResponse resp = CloudApiClient.sendApiRequest(appContext, endpoint, "GET", null, null);
             if (!resp.isSuccess() || resp.json == null) {
                 // Fallback to frequency-audio/tracks
-                resp = CloudApiClient.sendApiRequest(appContext, "frequency-audio/tracks", "GET", null, null);
+                endpoint = "frequency-audio/tracks?limit=" + PAGE_SIZE + "&offset=" + offset;
+                resp = CloudApiClient.sendApiRequest(appContext, endpoint, "GET", null, null);
             }
 
             final List<EduTraceMusicTrack> loaded = new ArrayList<>();
@@ -164,24 +174,48 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
                 }
             }
 
+            final boolean noMore = loaded.size() < PAGE_SIZE;
+
             handler.post(() -> {
-                if (!loaded.isEmpty()) {
+                isLoadingMore = false;
+                hasMoreTracks = !noMore;
+
+                if (clearExisting) {
                     playlist.clear();
+                }
+
+                if (!loaded.isEmpty()) {
                     playlist.addAll(loaded);
-                    Log.d(TAG, "Loaded " + playlist.size() + " EduTrace study tracks.");
+                    Log.d(TAG, "Total loaded tracks: " + playlist.size() + ", hasMore: " + hasMoreTracks);
                     if (currentTrackIndex < 0 && !playlist.isEmpty()) {
                         currentTrackIndex = 0;
                         fetchWaveformForTrack(playlist.get(0));
                     }
                 } else if (playlist.isEmpty()) {
-                    // Create default offline ambient track template if server is unreachable
                     createOfflineFallbackTracks(baseUrl);
                 }
+
                 updateWidgets();
                 if (onComplete != null) onComplete.run();
             });
         });
     }
+
+    /**
+     * Scalable pagination: loads next page of tracks on-demand when user scrolls
+     * through a large catalog (supporting 100k+ audio tracks without memory exhaustion).
+     */
+    public void loadMoreTracks(Runnable onComplete) {
+        if (isLoadingMore || !hasMoreTracks) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+        isLoadingMore = true;
+        fetchCatalog(playlist.size(), false, onComplete);
+    }
+
+    public boolean hasMoreTracks() { return hasMoreTracks; }
+    public boolean isLoadingMore() { return isLoadingMore; }
 
     private void createOfflineFallbackTracks(String baseUrl) {
         // Fallback default focus tracks matching documentation spec
@@ -304,6 +338,11 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
 
     public synchronized void next() {
         if (playlist.isEmpty()) return;
+        if (playlist.size() == 1) {
+            seekTo(0);
+            resume();
+            return;
+        }
         int nextIndex;
         if (isShuffle) {
             nextIndex = new Random().nextInt(playlist.size());
@@ -315,6 +354,11 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
 
     public synchronized void previous() {
         if (playlist.isEmpty()) return;
+        if (playlist.size() == 1) {
+            seekTo(0);
+            resume();
+            return;
+        }
         try {
             if (mediaPlayer != null && mediaPlayer.getCurrentPosition() > 3000) {
                 mediaPlayer.seekTo(0);
@@ -404,7 +448,7 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
     @Override
     public void onCompletion(MediaPlayer mp) {
         handler.removeCallbacks(progressRunnable);
-        if (isRepeat) {
+        if (isRepeat || playlist.size() == 1) {
             seekTo(0);
             resume();
         } else {
@@ -464,10 +508,25 @@ public class EduTraceMusicPlayer implements MediaPlayer.OnPreparedListener,
         } catch (Exception e) {
             Log.w(TAG, "Failed updating audio widgets: " + e.getMessage());
         }
+
+        // Synchronize Ongoing Interactive Notification for Music Playback Controls
+        try {
+            EduTraceMusicTrack track = getCurrentTrack();
+            if (track != null) {
+                String title = "EduTrace Focus Audio";
+                String subtitle = track.getDisplayTitle(isPlaying(), currentTrackIndex);
+                NotificationHelper.showMusicNotification(appContext, title, subtitle, isPlaying());
+            } else {
+                NotificationHelper.clearMusicNotification(appContext);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Failed updating media notification: " + e.getMessage());
+        }
     }
 
     public void release() {
         handler.removeCallbacks(progressRunnable);
+        NotificationHelper.clearMusicNotification(appContext);
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();

@@ -36,6 +36,13 @@ public class EduTraceMusicAdapter extends RecyclerView.Adapter<EduTraceMusicAdap
         notifyDataSetChanged();
     }
 
+    public void addTracks(List<EduTraceMusicTrack> moreTracks) {
+        if (moreTracks == null || moreTracks.isEmpty()) return;
+        int startPos = this.tracks.size();
+        this.tracks.addAll(moreTracks);
+        notifyItemRangeInserted(startPos, moreTracks.size());
+    }
+
     public void setPlaybackState(int currentSelected, boolean playing) {
         this.selectedIndex = currentSelected;
         this.isPlaying = playing;
@@ -58,7 +65,8 @@ public class EduTraceMusicAdapter extends RecyclerView.Adapter<EduTraceMusicAdap
         EduTraceMusicTrack track = tracks.get(position);
         boolean isCurrent = (position == selectedIndex);
 
-        holder.tvTitle.setText(track.getOriginalFilename());
+        // Distraction-free title: Never shows raw song filename while playing
+        holder.tvTitle.setText(track.getDisplayTitle(isCurrent && isPlaying, position));
         holder.tvDominantHz.setText(track.getDominantHzDisplay());
         holder.tvSha256.setText("SHA: " + track.getShortSha256());
 

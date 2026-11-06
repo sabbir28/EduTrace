@@ -39,10 +39,10 @@ public class StudyAudioWidget extends AppWidgetProvider {
         boolean isPlaying = player.isPlaying();
 
         if (track != null) {
-            views.setTextViewText(R.id.widget_track_title, track.getOriginalFilename());
+            views.setTextViewText(R.id.widget_track_title, track.getDisplayTitle(isPlaying, player.getCurrentTrackIndex()));
             views.setTextViewText(R.id.widget_track_frequency, track.getDominantHzDisplay());
         } else {
-            views.setTextViewText(R.id.widget_track_title, "Ready to Play Study Audio");
+            views.setTextViewText(R.id.widget_track_title, "Focus Audio • Ready");
             views.setTextViewText(R.id.widget_track_frequency, "CDN Master");
         }
 

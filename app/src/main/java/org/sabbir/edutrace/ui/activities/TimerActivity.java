@@ -376,7 +376,8 @@ public class TimerActivity extends AppCompatActivity {
             public void onTrackSelected(org.sabbir.edutrace.data.models.EduTraceMusicTrack track, int index) {
                 runOnUiThread(() -> {
                     if (track != null) {
-                        binding.tvMusicTrackTitle.setText(track.getOriginalFilename());
+                        // Distraction-free title: Never shows raw song filename while playing
+                        binding.tvMusicTrackTitle.setText(track.getDisplayTitle(musicPlayer.isPlaying(), index));
                         binding.tvMusicDominantHz.setText("Dominant: " + track.getDominantHzDisplay());
                         binding.tvMusicStatusBadge.setText("SHA: " + track.getShortSha256());
                         binding.waveformScrubber.setWaveformData(track.getEnergyTrend());
@@ -389,6 +390,10 @@ public class TimerActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     binding.ivMusicPlayIcon.setImageResource(isPlaying ? R.drawable.ic_pause : R.drawable.ic_play_arrow);
                     binding.waveformScrubber.setPlaying(isPlaying);
+                    org.sabbir.edutrace.data.models.EduTraceMusicTrack track = musicPlayer.getCurrentTrack();
+                    if (track != null) {
+                        binding.tvMusicTrackTitle.setText(track.getDisplayTitle(isPlaying, musicPlayer.getCurrentTrackIndex()));
+                    }
                 });
             }
 
@@ -426,7 +431,7 @@ public class TimerActivity extends AppCompatActivity {
         } else {
             org.sabbir.edutrace.data.models.EduTraceMusicTrack track = musicPlayer.getCurrentTrack();
             if (track != null) {
-                binding.tvMusicTrackTitle.setText(track.getOriginalFilename());
+                binding.tvMusicTrackTitle.setText(track.getDisplayTitle(musicPlayer.isPlaying(), musicPlayer.getCurrentTrackIndex()));
                 binding.tvMusicDominantHz.setText("Dominant: " + track.getDominantHzDisplay());
                 binding.tvMusicStatusBadge.setText("SHA: " + track.getShortSha256());
                 binding.waveformScrubber.setWaveformData(track.getEnergyTrend());
@@ -445,10 +450,29 @@ public class TimerActivity extends AppCompatActivity {
         }
 
         androidx.recyclerview.widget.RecyclerView rv = dialogView.findViewById(R.id.rvMusicTracks);
-        rv.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
+        androidx.recyclerview.widget.LinearLayoutManager layoutManager = new androidx.recyclerview.widget.LinearLayoutManager(this);
+        rv.setLayoutManager(layoutManager);
 
         org.sabbir.edutrace.ui.adapters.EduTraceMusicAdapter adapter = new org.sabbir.edutrace.ui.adapters.EduTraceMusicAdapter();
         rv.setAdapter(adapter);
+
+        // Scalable pagination scroll listener: supports 1 track up to 100k+ tracks
+        rv.addOnScrollListener(new androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(androidx.recyclerview.widget.RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+                if (dy > 0 && musicPlayer.hasMoreTracks() && !musicPlayer.isLoadingMore()) {
+                    int visibleCount = layoutManager.getChildCount();
+                    int totalCount = layoutManager.getItemCount();
+                    int firstVisible = layoutManager.findFirstVisibleItemPosition();
+                    if ((visibleCount + firstVisible) >= totalCount - 5) {
+                        musicPlayer.loadMoreTracks(() -> {
+                            adapter.setTracks(musicPlayer.getPlaylist(), musicPlayer.getCurrentTrackIndex(), musicPlayer.isPlaying());
+                        });
+                    }
+                }
+            }
+        });
 
         adapter.setTracks(musicPlayer.getPlaylist(), musicPlayer.getCurrentTrackIndex(), musicPlayer.isPlaying());
         adapter.setOnTrackClickListener((track, index) -> {
