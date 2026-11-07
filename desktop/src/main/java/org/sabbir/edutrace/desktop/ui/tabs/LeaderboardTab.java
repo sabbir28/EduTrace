@@ -248,3 +248,4 @@ public class LeaderboardTab extends JPanel {
         return card;
     }
 }
+

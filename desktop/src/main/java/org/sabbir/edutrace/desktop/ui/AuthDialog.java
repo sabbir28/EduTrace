@@ -237,3 +237,4 @@ public class AuthDialog extends JDialog {
         return panel;
     }
 }
+

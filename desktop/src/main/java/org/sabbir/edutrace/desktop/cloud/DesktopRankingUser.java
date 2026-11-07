@@ -75,3 +75,4 @@ public class DesktopRankingUser {
         return m + "m";
     }
 }
+
