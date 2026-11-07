@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.desktop.ui.tabs;
 
+import org.sabbir.edutrace.desktop.EduTraceDesktop;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudApiClient;
 import org.sabbir.edutrace.desktop.data.DataManager;
 
