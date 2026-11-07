@@ -178,15 +178,12 @@ public class StudyTimerTab extends JPanel {
         JLabel icon = new JLabel("📚");
         icon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 20));
 
-        String[] defaultSubjects = {
-                "Data Structures", "Mathematics", "Physics", "Computer Science",
-                "Algorithms", "Chemistry", "Literature", "Biology", "Deep Work"
-        };
+        cbSubjectSelector = new JComboBox<>();
+        cbSubjectSelector.setEditable(true);
+        reloadSubjects();
+
         String lastSubject = dataManager.getData().lastSelectedSubject != null ?
                 dataManager.getData().lastSelectedSubject : "Data Structures";
-
-        cbSubjectSelector = new JComboBox<>(defaultSubjects);
-        cbSubjectSelector.setEditable(true);
         cbSubjectSelector.setSelectedItem(lastSubject);
         cbSubjectSelector.setFont(new Font("SansSerif", Font.BOLD, 16));
         cbSubjectSelector.setForeground(Color.WHITE);
@@ -847,6 +844,28 @@ public class StudyTimerTab extends JPanel {
                 (mode == TimerMode.POMODORO_WORK ? "POMODORO FOCUS SESSION" : "RECHARGE BREAK"));
 
         resetTimer();
+    }
+
+    public void reloadSubjects() {
+        if (cbSubjectSelector == null) return;
+        String current = (String) cbSubjectSelector.getSelectedItem();
+        cbSubjectSelector.removeAllItems();
+        java.util.List<org.sabbir.edutrace.desktop.data.DesktopSubject> subs = dataManager.getSubjects();
+        for (org.sabbir.edutrace.desktop.data.DesktopSubject s : subs) {
+            cbSubjectSelector.addItem(s.getName());
+        }
+        if (current != null) {
+            cbSubjectSelector.setSelectedItem(current);
+        }
+    }
+
+    public void selectSubject(String subjectName) {
+        if (subjectName == null || subjectName.trim().isEmpty()) return;
+        reloadSubjects();
+        cbSubjectSelector.setSelectedItem(subjectName.trim());
+        dataManager.getData().lastSelectedSubject = subjectName.trim();
+        dataManager.saveData();
+        updateIntelligenceMetrics();
     }
 
     public void updateIntelligenceMetrics() {

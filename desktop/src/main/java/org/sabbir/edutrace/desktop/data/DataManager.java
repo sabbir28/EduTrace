@@ -24,12 +24,14 @@ public class DataManager {
     }
 
     public static class StorageData {
+        public List<DesktopDegree> degrees = new ArrayList<>();
+        public List<DesktopSubject> subjects = new ArrayList<>();
         public List<DesktopTask> tasks = new ArrayList<>();
         public List<DesktopStudySession> sessions = new ArrayList<>();
         public int pomodoroWorkMinutes = 25;
         public int pomodoroBreakMinutes = 5;
         public boolean isBengaliQuotes = false;
-        public String lastSelectedSubject = "Mathematics";
+        public String lastSelectedSubject = "Data Structures";
         public DesktopCloudUser currentUser = null;
         public String serverUrl = "https://edutrace-theta.vercel.app/api";
     }
@@ -59,12 +61,43 @@ public class DataManager {
         }
         if (data == null) {
             data = new StorageData();
-            // Seed default focus tasks
-            data.tasks.add(new DesktopTask("1", "Review course lecture notes", false));
-            data.tasks.add(new DesktopTask("2", "Solve 5 practice problems", false));
-            data.tasks.add(new DesktopTask("3", "Complete 25-minute deep focus session", false));
-            saveData();
         }
+
+        // Seed default degrees and subjects if empty
+        if (data.degrees == null || data.degrees.isEmpty()) {
+            data.degrees = new ArrayList<>();
+            data.degrees.add(new DesktopDegree(1, "Computer Science & Engineering", "#3B82F6"));
+            data.degrees.add(new DesktopDegree(2, "Mathematics & Natural Sciences", "#8B5CF6"));
+            data.degrees.add(new DesktopDegree(3, "General Focus & Self-Study", "#FFB800"));
+        }
+
+        if (data.subjects == null || data.subjects.isEmpty()) {
+            data.subjects = new ArrayList<>();
+            // CS Degree (id=1)
+            data.subjects.add(new DesktopSubject(1, 1, "Data Structures", "#60A5FA"));
+            data.subjects.add(new DesktopSubject(2, 1, "Algorithms & Problem Solving", "#F59E0B"));
+            data.subjects.add(new DesktopSubject(3, 1, "Operating Systems", "#10B981"));
+            data.subjects.add(new DesktopSubject(4, 1, "Database Systems", "#EC4899"));
+
+            // Math Degree (id=2)
+            data.subjects.add(new DesktopSubject(5, 2, "Linear Algebra", "#A78BFA"));
+            data.subjects.add(new DesktopSubject(6, 2, "Calculus & Analysis", "#F43F5E"));
+            data.subjects.add(new DesktopSubject(7, 2, "Classical Physics", "#F59E0B"));
+
+            // General (id=3)
+            data.subjects.add(new DesktopSubject(8, 3, "Deep Work Session", "#FFB800"));
+            data.subjects.add(new DesktopSubject(9, 3, "Research & Reading", "#14B8A6"));
+        }
+
+        if (data.tasks == null) {
+            data.tasks = new ArrayList<>();
+        }
+
+        if (data.sessions == null) {
+            data.sessions = new ArrayList<>();
+        }
+
+        saveData();
     }
 
     public synchronized void saveData() {
@@ -72,6 +105,87 @@ public class DataManager {
             gson.toJson(data, writer);
         } catch (Exception ignored) {}
     }
+
+    // ==========================================
+    // Degrees Management
+    // ==========================================
+
+    public synchronized List<DesktopDegree> getDegrees() {
+        return new ArrayList<>(data.degrees);
+    }
+
+    public synchronized DesktopDegree addDegree(String name, String colorHex) {
+        if (name == null || name.trim().isEmpty()) return null;
+        int nextId = 1;
+        for (DesktopDegree d : data.degrees) {
+            if (d.getId() >= nextId) nextId = d.getId() + 1;
+        }
+        DesktopDegree degree = new DesktopDegree(nextId, name.trim(), colorHex != null ? colorHex : "#FFB800");
+        data.degrees.add(degree);
+        saveData();
+        return degree;
+    }
+
+    public synchronized void deleteDegree(int degreeId) {
+        data.degrees.removeIf(d -> d.getId() == degreeId);
+        // Cascade delete subjects for this degree
+        data.subjects.removeIf(s -> s.getDegreeId() == degreeId);
+        saveData();
+    }
+
+    public synchronized DesktopDegree getDegreeById(int degreeId) {
+        for (DesktopDegree d : data.degrees) {
+            if (d.getId() == degreeId) return d;
+        }
+        return null;
+    }
+
+    // ==========================================
+    // Subjects Management
+    // ==========================================
+
+    public synchronized List<DesktopSubject> getSubjects() {
+        return new ArrayList<>(data.subjects);
+    }
+
+    public synchronized List<DesktopSubject> getSubjectsForDegree(int degreeId) {
+        List<DesktopSubject> result = new ArrayList<>();
+        for (DesktopSubject s : data.subjects) {
+            if (s.getDegreeId() == degreeId) {
+                result.add(s);
+            }
+        }
+        return result;
+    }
+
+    public synchronized DesktopSubject addSubject(int degreeId, String name, String colorHex) {
+        if (name == null || name.trim().isEmpty()) return null;
+        int nextId = 1;
+        for (DesktopSubject s : data.subjects) {
+            if (s.getId() >= nextId) nextId = s.getId() + 1;
+        }
+        DesktopSubject subject = new DesktopSubject(nextId, degreeId, name.trim(), colorHex != null ? colorHex : "#FACC15");
+        data.subjects.add(subject);
+        saveData();
+        return subject;
+    }
+
+    public synchronized void deleteSubject(int subjectId) {
+        data.subjects.removeIf(s -> s.getId() == subjectId);
+        saveData();
+    }
+
+    public synchronized DesktopSubject getSubjectByName(String name) {
+        if (name == null) return null;
+        for (DesktopSubject s : data.subjects) {
+            if (name.equalsIgnoreCase(s.getName())) return s;
+        }
+        return null;
+    }
+
+    // ==========================================
+    // Tasks & Sessions Management
+    // ==========================================
 
     public synchronized List<DesktopTask> getTasks() {
         return new ArrayList<>(data.tasks);
@@ -114,7 +228,7 @@ public class DataManager {
         long midnight = getTodayMidnightMillis();
         long total = 0;
         for (DesktopStudySession s : data.sessions) {
-            if (s.getStartTime() >= midnight) {
+            if (s.getStartTimestamp() >= midnight) {
                 total += s.getDurationSeconds();
             }
         }
@@ -126,9 +240,29 @@ public class DataManager {
         long midnight = getTodayMidnightMillis();
         long total = 0;
         for (DesktopStudySession s : data.sessions) {
-            if (s.getStartTime() >= midnight && subjectName.equalsIgnoreCase(s.getSubjectName())) {
+            if (s.getStartTimestamp() >= midnight && subjectName.equalsIgnoreCase(s.getSubjectName())) {
                 total += s.getDurationSeconds();
             }
+        }
+        return total;
+    }
+
+    public synchronized long getTotalSubjectStudySeconds(String subjectName) {
+        if (subjectName == null) return 0;
+        long total = 0;
+        for (DesktopStudySession s : data.sessions) {
+            if (subjectName.equalsIgnoreCase(s.getSubjectName())) {
+                total += s.getDurationSeconds();
+            }
+        }
+        return total;
+    }
+
+    public synchronized long getTotalDegreeStudySeconds(int degreeId) {
+        List<DesktopSubject> subs = getSubjectsForDegree(degreeId);
+        long total = 0;
+        for (DesktopSubject sub : subs) {
+            total += getTotalSubjectStudySeconds(sub.getName());
         }
         return total;
     }
@@ -156,4 +290,3 @@ public class DataManager {
         return dataFile;
     }
 }
-

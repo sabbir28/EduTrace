@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * Main application window for EduTrace Desktop Study Timer:
- * Porting the Android Study Timer suite directly to desktop with
+ * Porting the Android Study Timer, Degree List, and Subject List directly to desktop with
  * Obsidian dark theme, user avatar chip, sleek sidebar navigation, and zero exposed URLs.
  */
 public class MainDashboardFrame extends JFrame {
@@ -27,6 +27,7 @@ public class MainDashboardFrame extends JFrame {
     private JPanel contentContainer;
 
     private StudyTimerTab timerTab;
+    private DegreesSubjectsTab degreesTab;
     private LeaderboardTab leaderboardTab;
     private AnalyticsTab analyticsTab;
     private CalculatorTab calculatorTab;
@@ -41,10 +42,10 @@ public class MainDashboardFrame extends JFrame {
     private String currentTab = "TIMER";
 
     public MainDashboardFrame() {
-        super("EduTrace - Study Timer (Desktop Edition)");
+        super("EduTrace - Study Timer & Curriculum Suite");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1140, 780);
-        setMinimumSize(new Dimension(980, 660));
+        setSize(1160, 790);
+        setMinimumSize(new Dimension(1000, 680));
         setLocationRelativeTo(null);
 
         // Window icon
@@ -82,17 +83,31 @@ public class MainDashboardFrame extends JFrame {
             if (analyticsTab != null) {
                 analyticsTab.refreshData();
             }
+            if (degreesTab != null) {
+                degreesTab.refreshSubjectGrid();
+                degreesTab.refreshDegreeList();
+            }
         });
+
+        degreesTab = new DegreesSubjectsTab(subjectName -> {
+            timerTab.selectSubject(subjectName);
+            switchTab("TIMER");
+        });
+
         leaderboardTab = new LeaderboardTab(this::openAuthDialog);
         analyticsTab = new AnalyticsTab();
         calculatorTab = new CalculatorTab();
         settingsTab = new SettingsTab(() -> {
             analyticsTab.refreshData();
+            degreesTab.refreshDegreeList();
+            degreesTab.refreshSubjectGrid();
+            timerTab.reloadSubjects();
             timerTab.updateIntelligenceMetrics();
             onAuthStateChanged();
         });
 
         contentContainer.add(timerTab, "TIMER");
+        contentContainer.add(degreesTab, "DEGREES");
         contentContainer.add(leaderboardTab, "LEADERBOARD");
         contentContainer.add(analyticsTab, "ANALYTICS");
         contentContainer.add(calculatorTab, "CALCULATOR");
@@ -108,7 +123,7 @@ public class MainDashboardFrame extends JFrame {
 
     private JPanel createSidebar() {
         JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setPreferredSize(new Dimension(230, 0));
+        sidebar.setPreferredSize(new Dimension(236, 0));
         sidebar.setBackground(EduTraceDesktop.COLOR_SLATE_DARK);
         sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, EduTraceDesktop.COLOR_CARD_BORDER));
 
@@ -122,7 +137,7 @@ public class MainDashboardFrame extends JFrame {
         brandTitle.setFont(new Font("SansSerif", Font.BOLD, 24));
         brandTitle.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
-        JLabel brandSub = new JLabel("DESKTOP STUDY TIMER");
+        JLabel brandSub = new JLabel("STUDY SUITE & TIMER");
         brandSub.setFont(new Font("SansSerif", Font.BOLD, 10));
         brandSub.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
 
@@ -137,6 +152,8 @@ public class MainDashboardFrame extends JFrame {
         navList.setBorder(new EmptyBorder(8, 12, 8, 12));
 
         navList.add(createNavButton("TIMER", "⏱  Study Timer"));
+        navList.add(Box.createVerticalStrut(6));
+        navList.add(createNavButton("DEGREES", "🎓  Degrees & Subjects"));
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("LEADERBOARD", "🏆  Leaderboard"));
         navList.add(Box.createVerticalStrut(6));
@@ -270,7 +287,14 @@ public class MainDashboardFrame extends JFrame {
             case "TIMER":
                 headerTitleLabel.setText("Study Focus Timer");
                 headerSubtitleLabel.setText("Focus deeply with flow aura, acoustic atmospheres, and live session syncing.");
+                timerTab.reloadSubjects();
                 timerTab.updateIntelligenceMetrics();
+                break;
+            case "DEGREES":
+                headerTitleLabel.setText("Degree Programs & Subjects");
+                headerSubtitleLabel.setText("Manage your degree programs, courses, and view focus progress per subject.");
+                degreesTab.refreshDegreeList();
+                degreesTab.refreshSubjectGrid();
                 break;
             case "LEADERBOARD":
                 headerTitleLabel.setText("Global Scholar Leaderboard");
