@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.desktop.ui;
 
+import org.sabbir.edutrace.desktop.EduTraceDesktop;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudAuthManager;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudUser;
 import org.sabbir.edutrace.desktop.data.DesktopQuoteManager;
@@ -14,6 +15,10 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Main application window replicating the Android FocusLauncherActivity and ActivityMain:
+ * Obsidian dark theme, user avatar chip, sleek sidebar navigation, and zero exposed URLs.
+ */
 public class MainDashboardFrame extends JFrame {
 
     private final DesktopQuoteManager quoteManager = new DesktopQuoteManager();
@@ -38,7 +43,7 @@ public class MainDashboardFrame extends JFrame {
     private String currentTab = "DASHBOARD";
 
     public MainDashboardFrame() {
-        super("EduTrace - Focus & Study Suite (Desktop)");
+        super("EduTrace - Focus & Study Suite");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1140, 780);
         setMinimumSize(new Dimension(980, 660));
@@ -56,7 +61,7 @@ public class MainDashboardFrame extends JFrame {
 
     private void initUI() {
         JPanel root = new JPanel(new BorderLayout());
-        root.setBackground(new Color(0x0F, 0x17, 0x2A)); // Dark Slate
+        root.setBackground(EduTraceDesktop.COLOR_OBSIDIAN_BG);
 
         // Left Sidebar
         JPanel sidebar = createSidebar();
@@ -75,9 +80,13 @@ public class MainDashboardFrame extends JFrame {
         contentContainer = new JPanel(cardLayout);
         contentContainer.setOpaque(false);
 
-        dashboardTab = new DashboardTab(quoteManager, expr -> {
-            switchTab("CALCULATOR");
-            calculatorTab.setExpression(expr);
+        dashboardTab = new DashboardTab(quoteManager, target -> {
+            if (target != null && target.startsWith("CALCULATOR:")) {
+                switchTab("CALCULATOR");
+                calculatorTab.setExpression(target.substring("CALCULATOR:".length()));
+            } else if (target != null) {
+                switchTab(target);
+            }
         });
         timerTab = new StudyTimerTab();
         calculatorTab = new CalculatorTab();
@@ -107,28 +116,28 @@ public class MainDashboardFrame extends JFrame {
     private JPanel createSidebar() {
         JPanel sidebar = new JPanel(new BorderLayout());
         sidebar.setPreferredSize(new Dimension(230, 0));
-        sidebar.setBackground(new Color(0x09, 0x0D, 0x16)); // Deepest slate
-        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(0x1E, 0x29, 0x3B)));
+        sidebar.setBackground(EduTraceDesktop.COLOR_SLATE_DARK);
+        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, EduTraceDesktop.COLOR_CARD_BORDER));
 
-        // Brand / Logo Top
+        // Brand / Logo Top (Matching Android app logo)
         JPanel brandPanel = new JPanel();
         brandPanel.setLayout(new BoxLayout(brandPanel, BoxLayout.Y_AXIS));
         brandPanel.setOpaque(false);
         brandPanel.setBorder(new EmptyBorder(24, 20, 24, 20));
 
         JLabel brandTitle = new JLabel("EduTrace");
-        brandTitle.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        brandTitle.setForeground(new Color(0xE2, 0xB7, 0x14)); // Elite Gold
+        brandTitle.setFont(new Font("SansSerif", Font.BOLD, 24));
+        brandTitle.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
         JLabel brandSub = new JLabel("DESKTOP FOCUS SUITE");
-        brandSub.setFont(new Font("Segoe UI", Font.BOLD, 10));
-        brandSub.setForeground(new Color(0x64, 0x74, 0x8B));
+        brandSub.setFont(new Font("SansSerif", Font.BOLD, 10));
+        brandSub.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
 
         brandPanel.add(brandTitle);
         brandPanel.add(Box.createVerticalStrut(2));
         brandPanel.add(brandSub);
 
-        // Nav Items List
+        // Navigation Items
         JPanel navList = new JPanel();
         navList.setLayout(new BoxLayout(navList, BoxLayout.Y_AXIS));
         navList.setOpaque(false);
@@ -146,13 +155,13 @@ public class MainDashboardFrame extends JFrame {
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("SETTINGS", "⚙  Settings"));
 
-        // Sidebar Footer
+        // Sidebar Footer (Clean status without exposed URLs)
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
         footer.setBorder(new EmptyBorder(16, 20, 20, 20));
 
-        JLabel serverStatus = new JLabel("<html><span style='color:#10B981;'>●</span> Cloud Connected<br><span style='color:#64748B;'>edutrace-theta.vercel.app</span></html>");
-        serverStatus.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        JLabel serverStatus = new JLabel("<html><span style='color:#10B981;'>●</span> Cloud Synchronized<br><span style='color:#64748B;'>Encrypted & Active</span></html>");
+        serverStatus.setFont(new Font("SansSerif", Font.PLAIN, 10));
         footer.add(serverStatus, BorderLayout.SOUTH);
 
         sidebar.add(brandPanel, BorderLayout.NORTH);
@@ -163,7 +172,7 @@ public class MainDashboardFrame extends JFrame {
 
     private JButton createNavButton(String tabKey, String text) {
         JButton btn = new JButton(text);
-        btn.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        btn.setFont(new Font("SansSerif", Font.BOLD, 13));
         btn.setHorizontalAlignment(SwingConstants.LEFT);
         btn.setFocusPainted(false);
         btn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
@@ -185,12 +194,12 @@ public class MainDashboardFrame extends JFrame {
         titles.setOpaque(false);
 
         headerTitleLabel = new JLabel("Focus Dashboard");
-        headerTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 22));
-        headerTitleLabel.setForeground(new Color(0xF1, 0xF5, 0xF9));
+        headerTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 22));
+        headerTitleLabel.setForeground(EduTraceDesktop.COLOR_TEXT_PRIMARY);
 
         headerSubtitleLabel = new JLabel("Your minimal, education-first study workstation.");
-        headerSubtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        headerSubtitleLabel.setForeground(new Color(0x94, 0xA3, 0xB8));
+        headerSubtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        headerSubtitleLabel.setForeground(EduTraceDesktop.COLOR_TEXT_SECONDARY);
 
         titles.add(headerTitleLabel);
         titles.add(Box.createVerticalStrut(2));
@@ -200,12 +209,13 @@ public class MainDashboardFrame extends JFrame {
         rightSide.setOpaque(false);
 
         liveClockLabel = new JLabel();
-        liveClockLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        liveClockLabel.setForeground(new Color(0xE2, 0xB7, 0x14));
+        liveClockLabel.setFont(new Font("SansSerif", Font.BOLD, 13));
+        liveClockLabel.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
         updateClock();
 
+        // User profile pill matching Android header (Avatar + Name)
         userProfileBtn = new JButton("👤 Sign In");
-        userProfileBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        userProfileBtn.setFont(new Font("SansSerif", Font.BOLD, 12));
         userProfileBtn.setFocusPainted(false);
         userProfileBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         userProfileBtn.addActionListener(e -> openAuthDialog());
@@ -232,17 +242,17 @@ public class MainDashboardFrame extends JFrame {
     private void updateUserHeader() {
         if (authManager.isLoggedIn()) {
             DesktopCloudUser u = authManager.getCurrentUser();
-            userProfileBtn.setText("👤 " + (u != null ? u.getDisplayName() : "Account"));
-            userProfileBtn.setBackground(new Color(0x1E, 0x29, 0x3B));
-            userProfileBtn.setForeground(new Color(0x10, 0xB9, 0x81));
+            userProfileBtn.setText("👤 " + (u != null ? u.getDisplayName() : "Scholar") + "  ●");
+            userProfileBtn.setBackground(new Color(0x1B, 0x1B, 0x2A));
+            userProfileBtn.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK); // Emerald
         } else {
-            userProfileBtn.setText("Sign In / Register");
-            userProfileBtn.setBackground(new Color(0xE2, 0xB7, 0x14));
-            userProfileBtn.setForeground(new Color(0x0F, 0x17, 0x2A));
+            userProfileBtn.setText("👤 Sign In / Register");
+            userProfileBtn.setBackground(EduTraceDesktop.COLOR_ELITE_GOLD);
+            userProfileBtn.setForeground(new Color(0x0A, 0x0A, 0x0C));
         }
     }
 
-    private void switchTab(String tabKey) {
+    public void switchTab(String tabKey) {
         currentTab = tabKey;
         cardLayout.show(contentContainer, tabKey);
 
@@ -251,20 +261,20 @@ public class MainDashboardFrame extends JFrame {
             JButton b = entry.getValue();
             boolean active = entry.getKey().equals(tabKey);
             if (active) {
-                b.setBackground(new Color(0x1E, 0x29, 0x3B));
-                b.setForeground(new Color(0xE2, 0xB7, 0x14));
+                b.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
+                b.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
                 b.setBorder(BorderFactory.createCompoundBorder(
-                        BorderFactory.createMatteBorder(0, 4, 0, 0, new Color(0xE2, 0xB7, 0x14)),
+                        BorderFactory.createMatteBorder(0, 4, 0, 0, EduTraceDesktop.COLOR_ELITE_GOLD),
                         new EmptyBorder(0, 12, 0, 0)
                 ));
             } else {
-                b.setBackground(new Color(0x09, 0x0D, 0x16));
-                b.setForeground(new Color(0x94, 0xA3, 0xB8));
+                b.setBackground(EduTraceDesktop.COLOR_SLATE_DARK);
+                b.setForeground(EduTraceDesktop.COLOR_TEXT_SECONDARY);
                 b.setBorder(new EmptyBorder(0, 16, 0, 0));
             }
         }
 
-        // Update titles
+        // Update titles (NO exposed URLs)
         switch (tabKey) {
             case "DASHBOARD":
                 headerTitleLabel.setText("Focus Dashboard");
@@ -277,7 +287,7 @@ public class MainDashboardFrame extends JFrame {
                 break;
             case "LEADERBOARD":
                 headerTitleLabel.setText("Global Scholar Leaderboard");
-                headerSubtitleLabel.setText("Real-time rankings powered by EduTrace Cloud (edutrace-theta.vercel.app).");
+                headerSubtitleLabel.setText("Real-time scholar rankings powered by EduTrace Cloud.");
                 leaderboardTab.loadLeaderboard("all_time");
                 break;
             case "CALCULATOR":
@@ -291,7 +301,7 @@ public class MainDashboardFrame extends JFrame {
                 break;
             case "SETTINGS":
                 headerTitleLabel.setText("Settings & Data Management");
-                headerSubtitleLabel.setText("Manage server configuration, local storage, pomodoro, and quotes.");
+                headerSubtitleLabel.setText("Manage cloud synchronization, local storage, pomodoro, and quotes.");
                 break;
         }
     }

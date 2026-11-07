@@ -57,26 +57,25 @@ public class SettingsTab extends JPanel {
         JPanel card = createStyledCard();
         card.setLayout(new BorderLayout(10, 12));
 
-        JLabel title = new JLabel("EDUTRACE CLOUD SERVER");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        title.setForeground(new Color(0xE2, 0xB7, 0x14));
+        JLabel title = new JLabel("EDUTRACE CLOUD SYNCHRONIZATION");
+        title.setFont(new Font("SansSerif", Font.BOLD, 12));
+        title.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
-        String url = DesktopCloudApiClient.getServerUrl();
-        JLabel info = new JLabel("<html><b>Backend API:</b> <code style='color:#38BDF8; font-size:12px;'>" + url + "</code><br>"
-                + "<span style='color:#94A3B8;'>Synchronizes live study sessions, global rankings, and user accounts identically with the EduTrace Android app.</span></html>");
-        info.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        JLabel info = new JLabel("<html><b>Cloud Status:</b> <span style='color:#10B981;'>● Active & Encrypted</span><br>"
+                + "<span style='color:#94A3B8;'>Synchronizes live study sessions, global rankings, and user accounts identically with the EduTrace mobile app.</span></html>");
+        info.setFont(new Font("SansSerif", Font.PLAIN, 13));
 
         JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         btnRow.setOpaque(false);
 
-        JButton btnTest = new JButton("Test Server Connection 🌐");
+        JButton btnTest = new JButton("Check Cloud Status 🌐");
         JLabel statusLbl = new JLabel("");
-        statusLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        statusLbl.setFont(new Font("SansSerif", Font.BOLD, 12));
 
         btnTest.addActionListener(e -> {
             btnTest.setEnabled(false);
-            statusLbl.setText("Pinging EduTrace Cloud...");
-            statusLbl.setForeground(new Color(0xE2, 0xB7, 0x14));
+            statusLbl.setText("Checking cloud services...");
+            statusLbl.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
             DesktopCloudApiClient.cloudExecutor.execute(() -> {
                 long start = System.currentTimeMillis();
@@ -86,10 +85,10 @@ public class SettingsTab extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     btnTest.setEnabled(true);
                     if (res.isSuccess()) {
-                        statusLbl.setText("✔ Connected! (" + elapsed + " ms) • 200 OK");
-                        statusLbl.setForeground(new Color(0x10, 0xB9, 0x81));
+                        statusLbl.setText("✔ Cloud Operational (" + elapsed + " ms)");
+                        statusLbl.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
                     } else {
-                        statusLbl.setText("✖ Error: " + res.errorMessage);
+                        statusLbl.setText("✖ Cloud Service Notice");
                         statusLbl.setForeground(new Color(0xEF, 0x44, 0x44));
                     }
                 });
@@ -199,18 +198,17 @@ public class SettingsTab extends JPanel {
         card.setLayout(new BorderLayout(8, 8));
 
         JLabel title = new JLabel("ABOUT EDUTRACE DESKTOP");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        title.setForeground(new Color(0xE2, 0xB7, 0x14));
+        title.setFont(new Font("SansSerif", Font.BOLD, 12));
+        title.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
-        JLabel info = new JLabel("<html><body style='line-height: 1.6; color: #E2E8F0;'>"
-                + "<b style='font-size: 14px; color: #E2B714;'>EduTrace Focus & Productivity Suite (Desktop Edition)</b><br>"
+        JLabel info = new JLabel("<html><body style='line-height: 1.6; color: #E2E8F0; font-family: SansSerif;'>"
+                + "<b style='font-size: 14px; color: #FFB800;'>EduTrace Focus & Productivity Suite (Desktop Edition)</b><br>"
                 + "Version 1.0.0 &bull; Pure Java Desktop Suite<br>"
                 + "Developed by <b>sabbir28</b> &bull; Built with FlatLaf Dark UI & Java SE 11+<br><br>"
-                + "Connected Backend: <b>https://edutrace-theta.vercel.app/api</b><br>"
                 + "Features: Minimalist Daily Dashboard, Pomodoro & Study Stopwatch, Live Global Leaderboard, "
                 + "Procedural Ambient Audio Engine, Full Scientific Math Evaluator, Focus Checklist, and Visual Analytics Breakdown."
                 + "</body></html>");
-        info.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        info.setFont(new Font("SansSerif", Font.PLAIN, 13));
 
         card.add(title, BorderLayout.NORTH);
         card.add(info, BorderLayout.CENTER);
@@ -223,16 +221,16 @@ public class SettingsTab extends JPanel {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(0x1E, 0x29, 0x3B));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
-                g2.setColor(new Color(0x33, 0x41, 0x55));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.setColor(EduTraceDesktop.COLOR_CARD_SURFACE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 22, 22);
+                g2.setColor(EduTraceDesktop.COLOR_CARD_BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         card.setOpaque(false);
-        card.setBorder(new EmptyBorder(16, 18, 16, 18));
+        card.setBorder(new EmptyBorder(16, 20, 16, 20));
         return card;
     }
 }

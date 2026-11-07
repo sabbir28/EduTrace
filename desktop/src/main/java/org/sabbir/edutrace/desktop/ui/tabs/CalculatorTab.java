@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.desktop.ui.tabs;
 
+import org.sabbir.edutrace.desktop.EduTraceDesktop;
 import org.sabbir.edutrace.desktop.utils.ScientificMathEvaluator;
 
 import javax.swing.*;
@@ -273,16 +274,16 @@ public class CalculatorTab extends JPanel {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(0x1E, 0x29, 0x3B));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
-                g2.setColor(new Color(0x33, 0x41, 0x55));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 16, 16);
+                g2.setColor(EduTraceDesktop.COLOR_CARD_SURFACE);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 22, 22);
+                g2.setColor(EduTraceDesktop.COLOR_CARD_BORDER);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 22, 22);
                 g2.dispose();
                 super.paintComponent(g);
             }
         };
         card.setOpaque(false);
-        card.setBorder(new EmptyBorder(14, 16, 14, 16));
+        card.setBorder(new EmptyBorder(16, 18, 16, 18));
         return card;
     }
 }
