@@ -1,5 +1,6 @@
 package org.sabbir.edutrace.desktop.ui.tabs;
 
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudApiClient;
 import org.sabbir.edutrace.desktop.data.DataManager;
 
 import javax.swing.*;
@@ -28,15 +29,19 @@ public class SettingsTab extends JPanel {
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
         mainPanel.setOpaque(false);
 
-        // 1. Data Storage Settings Card
+        // 1. Cloud Server Configuration Card
+        mainPanel.add(createServerCard());
+        mainPanel.add(Box.createVerticalStrut(16));
+
+        // 2. Data Storage Settings Card
         mainPanel.add(createStorageCard());
         mainPanel.add(Box.createVerticalStrut(16));
 
-        // 2. Pomodoro & Preferences Card
+        // 3. Pomodoro & Preferences Card
         mainPanel.add(createPreferencesCard());
         mainPanel.add(Box.createVerticalStrut(16));
 
-        // 3. About EduTrace Desktop Card
+        // 4. About EduTrace Desktop Card
         mainPanel.add(createAboutCard());
 
         JScrollPane scrollPane = new JScrollPane(mainPanel);
@@ -46,6 +51,58 @@ public class SettingsTab extends JPanel {
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
         add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private JPanel createServerCard() {
+        JPanel card = createStyledCard();
+        card.setLayout(new BorderLayout(10, 12));
+
+        JLabel title = new JLabel("EDUTRACE CLOUD SERVER");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        title.setForeground(new Color(0xE2, 0xB7, 0x14));
+
+        String url = DesktopCloudApiClient.getServerUrl();
+        JLabel info = new JLabel("<html><b>Backend API:</b> <code style='color:#38BDF8; font-size:12px;'>" + url + "</code><br>"
+                + "<span style='color:#94A3B8;'>Synchronizes live study sessions, global rankings, and user accounts identically with the EduTrace Android app.</span></html>");
+        info.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        btnRow.setOpaque(false);
+
+        JButton btnTest = new JButton("Test Server Connection 🌐");
+        JLabel statusLbl = new JLabel("");
+        statusLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+
+        btnTest.addActionListener(e -> {
+            btnTest.setEnabled(false);
+            statusLbl.setText("Pinging EduTrace Cloud...");
+            statusLbl.setForeground(new Color(0xE2, 0xB7, 0x14));
+
+            DesktopCloudApiClient.cloudExecutor.execute(() -> {
+                long start = System.currentTimeMillis();
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/rankings?timeframe=daily", "GET", null, null);
+                long elapsed = System.currentTimeMillis() - start;
+
+                SwingUtilities.invokeLater(() -> {
+                    btnTest.setEnabled(true);
+                    if (res.isSuccess()) {
+                        statusLbl.setText("✔ Connected! (" + elapsed + " ms) • 200 OK");
+                        statusLbl.setForeground(new Color(0x10, 0xB9, 0x81));
+                    } else {
+                        statusLbl.setText("✖ Error: " + res.errorMessage);
+                        statusLbl.setForeground(new Color(0xEF, 0x44, 0x44));
+                    }
+                });
+            });
+        });
+
+        btnRow.add(btnTest);
+        btnRow.add(statusLbl);
+
+        card.add(title, BorderLayout.NORTH);
+        card.add(info, BorderLayout.CENTER);
+        card.add(btnRow, BorderLayout.SOUTH);
+        return card;
     }
 
     private JPanel createStorageCard() {
@@ -149,8 +206,9 @@ public class SettingsTab extends JPanel {
                 + "<b style='font-size: 14px; color: #E2B714;'>EduTrace Focus & Productivity Suite (Desktop Edition)</b><br>"
                 + "Version 1.0.0 &bull; Pure Java Desktop Suite<br>"
                 + "Developed by <b>sabbir28</b> &bull; Built with FlatLaf Dark UI & Java SE 11+<br><br>"
-                + "Features: Minimalist Daily Dashboard, Pomodoro & Study Stopwatch, Procedural Ambient Audio Engine, "
-                + "Full Scientific Math Evaluator, Focus Checklist, and Visual Analytics Breakdown."
+                + "Connected Backend: <b>https://edutrace-theta.vercel.app/api</b><br>"
+                + "Features: Minimalist Daily Dashboard, Pomodoro & Study Stopwatch, Live Global Leaderboard, "
+                + "Procedural Ambient Audio Engine, Full Scientific Math Evaluator, Focus Checklist, and Visual Analytics Breakdown."
                 + "</body></html>");
         info.setFont(new Font("Segoe UI", Font.PLAIN, 13));
 
@@ -178,4 +236,3 @@ public class SettingsTab extends JPanel {
         return card;
     }
 }
-

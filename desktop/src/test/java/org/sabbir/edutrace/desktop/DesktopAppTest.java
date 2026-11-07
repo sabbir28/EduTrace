@@ -1,6 +1,9 @@
 package org.sabbir.edutrace.desktop;
 
 import org.junit.Test;
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudApiClient;
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudUser;
+import org.sabbir.edutrace.desktop.cloud.DesktopRankingUser;
 import org.sabbir.edutrace.desktop.data.DesktopQuoteManager;
 import org.sabbir.edutrace.desktop.data.DesktopTask;
 import org.sabbir.edutrace.desktop.utils.ScientificMathEvaluator;
@@ -45,5 +48,23 @@ public class DesktopAppTest {
         task.setCompleted(true);
         assertTrue(task.isCompleted());
     }
-}
 
+    @Test
+    public void testCloudServerUrl() {
+        assertEquals("https://edutrace-theta.vercel.app/api", DesktopCloudApiClient.DEFAULT_PROD_URL);
+        assertEquals("https://edutrace-theta.vercel.app/api", DesktopCloudApiClient.getServerUrl());
+    }
+
+    @Test
+    public void testCloudUserAndRankingModel() {
+        DesktopCloudUser user = new DesktopCloudUser(5, "student", "student@edutrace.org", "Sabbir H.", "test-token");
+        assertEquals(5, user.getId());
+        assertEquals("Sabbir H.", user.getDisplayName());
+        assertEquals("test-token", user.getToken());
+
+        DesktopRankingUser ranking = new DesktopRankingUser(1, 5, "student", "Sabbir H.", "", "Bronze", 3600, 1.0, "1h 0m", 2, true);
+        assertEquals(1, ranking.rank);
+        assertEquals("Sabbir H.", ranking.displayName);
+        assertTrue(ranking.isCurrentUser);
+    }
+}

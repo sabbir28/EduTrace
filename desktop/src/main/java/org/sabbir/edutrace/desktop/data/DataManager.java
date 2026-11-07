@@ -3,6 +3,8 @@ package org.sabbir.edutrace.desktop.data;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudUser;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -28,6 +30,8 @@ public class DataManager {
         public int pomodoroBreakMinutes = 5;
         public boolean isBengaliQuotes = false;
         public String lastSelectedSubject = "Mathematics";
+        public DesktopCloudUser currentUser = null;
+        public String serverUrl = "https://edutrace-theta.vercel.app/api";
     }
 
     private final File dataFile;

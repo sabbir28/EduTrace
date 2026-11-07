@@ -1,5 +1,7 @@
 package org.sabbir.edutrace.desktop.ui;
 
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudAuthManager;
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudUser;
 import org.sabbir.edutrace.desktop.data.DesktopQuoteManager;
 import org.sabbir.edutrace.desktop.ui.tabs.*;
 
@@ -15,6 +17,7 @@ import java.util.Map;
 public class MainDashboardFrame extends JFrame {
 
     private final DesktopQuoteManager quoteManager = new DesktopQuoteManager();
+    private final DesktopCloudAuthManager authManager = DesktopCloudAuthManager.getInstance();
 
     private CardLayout cardLayout;
     private JPanel contentContainer;
@@ -23,11 +26,13 @@ public class MainDashboardFrame extends JFrame {
     private StudyTimerTab timerTab;
     private CalculatorTab calculatorTab;
     private AnalyticsTab analyticsTab;
+    private LeaderboardTab leaderboardTab;
     private SettingsTab settingsTab;
 
     private JLabel headerTitleLabel;
     private JLabel headerSubtitleLabel;
     private JLabel liveClockLabel;
+    private JButton userProfileBtn;
 
     private final Map<String, JButton> navButtons = new HashMap<>();
     private String currentTab = "DASHBOARD";
@@ -35,8 +40,8 @@ public class MainDashboardFrame extends JFrame {
     public MainDashboardFrame() {
         super("EduTrace - Focus & Study Suite (Desktop)");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1100, 750);
-        setMinimumSize(new Dimension(950, 640));
+        setSize(1140, 780);
+        setMinimumSize(new Dimension(980, 660));
         setLocationRelativeTo(null);
 
         // Window icon
@@ -77,15 +82,18 @@ public class MainDashboardFrame extends JFrame {
         timerTab = new StudyTimerTab();
         calculatorTab = new CalculatorTab();
         analyticsTab = new AnalyticsTab();
+        leaderboardTab = new LeaderboardTab(this::openAuthDialog);
         settingsTab = new SettingsTab(() -> {
             dashboardTab.refreshData();
             analyticsTab.refreshData();
+            onAuthStateChanged();
         });
 
         contentContainer.add(dashboardTab, "DASHBOARD");
         contentContainer.add(timerTab, "TIMER");
         contentContainer.add(calculatorTab, "CALCULATOR");
         contentContainer.add(analyticsTab, "ANALYTICS");
+        contentContainer.add(leaderboardTab, "LEADERBOARD");
         contentContainer.add(settingsTab, "SETTINGS");
 
         rightArea.add(contentContainer, BorderLayout.CENTER);
@@ -93,6 +101,7 @@ public class MainDashboardFrame extends JFrame {
 
         setContentPane(root);
         switchTab("DASHBOARD");
+        updateUserHeader();
     }
 
     private JPanel createSidebar() {
@@ -129,6 +138,8 @@ public class MainDashboardFrame extends JFrame {
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("TIMER", "⏱  Study Timer"));
         navList.add(Box.createVerticalStrut(6));
+        navList.add(createNavButton("LEADERBOARD", "🏆  Leaderboard"));
+        navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("CALCULATOR", "🧮  Calculator"));
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("ANALYTICS", "📊  Analytics"));
@@ -140,10 +151,9 @@ public class MainDashboardFrame extends JFrame {
         footer.setOpaque(false);
         footer.setBorder(new EmptyBorder(16, 20, 20, 20));
 
-        JLabel version = new JLabel("EduTrace v1.0 Desktop");
-        version.setFont(new Font("Segoe UI", Font.PLAIN, 11));
-        version.setForeground(new Color(0x47, 0x55, 0x69));
-        footer.add(version, BorderLayout.SOUTH);
+        JLabel serverStatus = new JLabel("<html><span style='color:#10B981;'>●</span> Cloud Connected<br><span style='color:#64748B;'>edutrace-theta.vercel.app</span></html>");
+        serverStatus.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        footer.add(serverStatus, BorderLayout.SOUTH);
 
         sidebar.add(brandPanel, BorderLayout.NORTH);
         sidebar.add(navList, BorderLayout.CENTER);
@@ -186,14 +196,50 @@ public class MainDashboardFrame extends JFrame {
         titles.add(Box.createVerticalStrut(2));
         titles.add(headerSubtitleLabel);
 
+        JPanel rightSide = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 0));
+        rightSide.setOpaque(false);
+
         liveClockLabel = new JLabel();
         liveClockLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
         liveClockLabel.setForeground(new Color(0xE2, 0xB7, 0x14));
         updateClock();
 
+        userProfileBtn = new JButton("👤 Sign In");
+        userProfileBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        userProfileBtn.setFocusPainted(false);
+        userProfileBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        userProfileBtn.addActionListener(e -> openAuthDialog());
+
+        rightSide.add(liveClockLabel);
+        rightSide.add(userProfileBtn);
+
         header.add(titles, BorderLayout.WEST);
-        header.add(liveClockLabel, BorderLayout.EAST);
+        header.add(rightSide, BorderLayout.EAST);
         return header;
+    }
+
+    private void openAuthDialog() {
+        AuthDialog dialog = new AuthDialog(this, this::onAuthStateChanged);
+        dialog.setVisible(true);
+    }
+
+    private void onAuthStateChanged() {
+        updateUserHeader();
+        leaderboardTab.loadLeaderboard("all_time");
+        dashboardTab.refreshData();
+    }
+
+    private void updateUserHeader() {
+        if (authManager.isLoggedIn()) {
+            DesktopCloudUser u = authManager.getCurrentUser();
+            userProfileBtn.setText("👤 " + (u != null ? u.getDisplayName() : "Account"));
+            userProfileBtn.setBackground(new Color(0x1E, 0x29, 0x3B));
+            userProfileBtn.setForeground(new Color(0x10, 0xB9, 0x81));
+        } else {
+            userProfileBtn.setText("Sign In / Register");
+            userProfileBtn.setBackground(new Color(0xE2, 0xB7, 0x14));
+            userProfileBtn.setForeground(new Color(0x0F, 0x17, 0x2A));
+        }
     }
 
     private void switchTab(String tabKey) {
@@ -227,7 +273,12 @@ public class MainDashboardFrame extends JFrame {
                 break;
             case "TIMER":
                 headerTitleLabel.setText("Study Timer & Pomodoro");
-                headerSubtitleLabel.setText("Focus deeply with interval timers and synthesized ambient soundscapes.");
+                headerSubtitleLabel.setText("Focus deeply with interval timers and live cloud session synchronization.");
+                break;
+            case "LEADERBOARD":
+                headerTitleLabel.setText("Global Scholar Leaderboard");
+                headerSubtitleLabel.setText("Real-time rankings powered by EduTrace Cloud (edutrace-theta.vercel.app).");
+                leaderboardTab.loadLeaderboard("all_time");
                 break;
             case "CALCULATOR":
                 headerTitleLabel.setText("Scientific Calculator");
@@ -240,7 +291,7 @@ public class MainDashboardFrame extends JFrame {
                 break;
             case "SETTINGS":
                 headerTitleLabel.setText("Settings & Data Management");
-                headerSubtitleLabel.setText("Manage local storage, pomodoro durations, and quote languages.");
+                headerSubtitleLabel.setText("Manage server configuration, local storage, pomodoro, and quotes.");
                 break;
         }
     }
@@ -255,4 +306,3 @@ public class MainDashboardFrame extends JFrame {
         liveClockLabel.setText(sdf.format(new Date()));
     }
 }
-

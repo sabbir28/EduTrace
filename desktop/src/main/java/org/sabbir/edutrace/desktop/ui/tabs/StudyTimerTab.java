@@ -1,6 +1,7 @@
 package org.sabbir.edutrace.desktop.ui.tabs;
 
 import org.sabbir.edutrace.desktop.audio.AmbientSoundPlayer;
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudSessionManager;
 import org.sabbir.edutrace.desktop.data.DataManager;
 import org.sabbir.edutrace.desktop.data.DesktopStudySession;
 
@@ -257,6 +258,8 @@ public class StudyTimerTab extends JPanel {
             isRunning = true;
             if (sessionStartMillis == 0) {
                 sessionStartMillis = System.currentTimeMillis();
+                DesktopCloudSessionManager.getInstance()
+                        .startLiveServerSession((String) subjectComboBox.getSelectedItem());
             }
             swingTimer.start();
             btnStartPause.setText("⏸ Pause");
@@ -273,6 +276,9 @@ public class StudyTimerTab extends JPanel {
         boolean wasRunning = isRunning;
         isRunning = false;
         swingTimer.stop();
+        if (wasRunning || secondsElapsed > 0) {
+            DesktopCloudSessionManager.getInstance().stopLiveServerSession(secondsElapsed, "Reset");
+        }
         sessionStartMillis = 0;
         secondsElapsed = 0;
         secondsRemaining = currentMode.getDefaultSeconds();
@@ -317,7 +323,8 @@ public class StudyTimerTab extends JPanel {
                     notes.trim()
             );
             dataManager.addSession(session);
-            JOptionPane.showMessageDialog(this, "Session logged successfully! View details in Analytics.", "Success", JOptionPane.INFORMATION_MESSAGE);
+            DesktopCloudSessionManager.getInstance().stopLiveServerSession(secondsElapsed, notes.trim());
+            JOptionPane.showMessageDialog(this, "Session logged successfully! Synced with EduTrace Cloud.", "Success", JOptionPane.INFORMATION_MESSAGE);
             resetTimer();
         }
     }
