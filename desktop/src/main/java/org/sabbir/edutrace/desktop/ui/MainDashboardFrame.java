@@ -3,7 +3,6 @@ package org.sabbir.edutrace.desktop.ui;
 import org.sabbir.edutrace.desktop.EduTraceDesktop;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudAuthManager;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudUser;
-import org.sabbir.edutrace.desktop.data.DesktopQuoteManager;
 import org.sabbir.edutrace.desktop.ui.tabs.*;
 
 import javax.swing.*;
@@ -16,22 +15,21 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Main application window replicating the Android FocusLauncherActivity and ActivityMain:
+ * Main application window for EduTrace Desktop Study Timer:
+ * Porting the Android Study Timer suite directly to desktop with
  * Obsidian dark theme, user avatar chip, sleek sidebar navigation, and zero exposed URLs.
  */
 public class MainDashboardFrame extends JFrame {
 
-    private final DesktopQuoteManager quoteManager = new DesktopQuoteManager();
     private final DesktopCloudAuthManager authManager = DesktopCloudAuthManager.getInstance();
 
     private CardLayout cardLayout;
     private JPanel contentContainer;
 
-    private DashboardTab dashboardTab;
     private StudyTimerTab timerTab;
-    private CalculatorTab calculatorTab;
-    private AnalyticsTab analyticsTab;
     private LeaderboardTab leaderboardTab;
+    private AnalyticsTab analyticsTab;
+    private CalculatorTab calculatorTab;
     private SettingsTab settingsTab;
 
     private JLabel headerTitleLabel;
@@ -40,10 +38,10 @@ public class MainDashboardFrame extends JFrame {
     private JButton userProfileBtn;
 
     private final Map<String, JButton> navButtons = new HashMap<>();
-    private String currentTab = "DASHBOARD";
+    private String currentTab = "TIMER";
 
     public MainDashboardFrame() {
-        super("EduTrace - Focus & Study Suite");
+        super("EduTrace - Study Timer (Desktop Edition)");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1140, 780);
         setMinimumSize(new Dimension(980, 660));
@@ -80,36 +78,31 @@ public class MainDashboardFrame extends JFrame {
         contentContainer = new JPanel(cardLayout);
         contentContainer.setOpaque(false);
 
-        dashboardTab = new DashboardTab(quoteManager, target -> {
-            if (target != null && target.startsWith("CALCULATOR:")) {
-                switchTab("CALCULATOR");
-                calculatorTab.setExpression(target.substring("CALCULATOR:".length()));
-            } else if (target != null) {
-                switchTab(target);
+        timerTab = new StudyTimerTab(() -> {
+            if (analyticsTab != null) {
+                analyticsTab.refreshData();
             }
         });
-        timerTab = new StudyTimerTab();
-        calculatorTab = new CalculatorTab();
-        analyticsTab = new AnalyticsTab();
         leaderboardTab = new LeaderboardTab(this::openAuthDialog);
+        analyticsTab = new AnalyticsTab();
+        calculatorTab = new CalculatorTab();
         settingsTab = new SettingsTab(() -> {
-            dashboardTab.refreshData();
             analyticsTab.refreshData();
+            timerTab.updateIntelligenceMetrics();
             onAuthStateChanged();
         });
 
-        contentContainer.add(dashboardTab, "DASHBOARD");
         contentContainer.add(timerTab, "TIMER");
-        contentContainer.add(calculatorTab, "CALCULATOR");
-        contentContainer.add(analyticsTab, "ANALYTICS");
         contentContainer.add(leaderboardTab, "LEADERBOARD");
+        contentContainer.add(analyticsTab, "ANALYTICS");
+        contentContainer.add(calculatorTab, "CALCULATOR");
         contentContainer.add(settingsTab, "SETTINGS");
 
         rightArea.add(contentContainer, BorderLayout.CENTER);
         root.add(rightArea, BorderLayout.CENTER);
 
         setContentPane(root);
-        switchTab("DASHBOARD");
+        switchTab("TIMER");
         updateUserHeader();
     }
 
@@ -119,7 +112,7 @@ public class MainDashboardFrame extends JFrame {
         sidebar.setBackground(EduTraceDesktop.COLOR_SLATE_DARK);
         sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, EduTraceDesktop.COLOR_CARD_BORDER));
 
-        // Brand / Logo Top (Matching Android app logo)
+        // Brand / Logo Top
         JPanel brandPanel = new JPanel();
         brandPanel.setLayout(new BoxLayout(brandPanel, BoxLayout.Y_AXIS));
         brandPanel.setOpaque(false);
@@ -129,7 +122,7 @@ public class MainDashboardFrame extends JFrame {
         brandTitle.setFont(new Font("SansSerif", Font.BOLD, 24));
         brandTitle.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
-        JLabel brandSub = new JLabel("DESKTOP FOCUS SUITE");
+        JLabel brandSub = new JLabel("DESKTOP STUDY TIMER");
         brandSub.setFont(new Font("SansSerif", Font.BOLD, 10));
         brandSub.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
 
@@ -143,19 +136,17 @@ public class MainDashboardFrame extends JFrame {
         navList.setOpaque(false);
         navList.setBorder(new EmptyBorder(8, 12, 8, 12));
 
-        navList.add(createNavButton("DASHBOARD", "⚡  Focus Dashboard"));
-        navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("TIMER", "⏱  Study Timer"));
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("LEADERBOARD", "🏆  Leaderboard"));
         navList.add(Box.createVerticalStrut(6));
-        navList.add(createNavButton("CALCULATOR", "🧮  Calculator"));
+        navList.add(createNavButton("ANALYTICS", "📊  Study Analytics"));
         navList.add(Box.createVerticalStrut(6));
-        navList.add(createNavButton("ANALYTICS", "📊  Analytics"));
+        navList.add(createNavButton("CALCULATOR", "🧮  Calculator"));
         navList.add(Box.createVerticalStrut(6));
         navList.add(createNavButton("SETTINGS", "⚙  Settings"));
 
-        // Sidebar Footer (Clean status without exposed URLs)
+        // Sidebar Footer
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
         footer.setBorder(new EmptyBorder(16, 20, 20, 20));
@@ -193,11 +184,11 @@ public class MainDashboardFrame extends JFrame {
         titles.setLayout(new BoxLayout(titles, BoxLayout.Y_AXIS));
         titles.setOpaque(false);
 
-        headerTitleLabel = new JLabel("Focus Dashboard");
+        headerTitleLabel = new JLabel("Study Focus Timer");
         headerTitleLabel.setFont(new Font("SansSerif", Font.BOLD, 22));
         headerTitleLabel.setForeground(EduTraceDesktop.COLOR_TEXT_PRIMARY);
 
-        headerSubtitleLabel = new JLabel("Your minimal, education-first study workstation.");
+        headerSubtitleLabel = new JLabel("Focus deeply with flow aura, acoustic atmospheres, and live session syncing.");
         headerSubtitleLabel.setFont(new Font("SansSerif", Font.PLAIN, 12));
         headerSubtitleLabel.setForeground(EduTraceDesktop.COLOR_TEXT_SECONDARY);
 
@@ -236,7 +227,7 @@ public class MainDashboardFrame extends JFrame {
     private void onAuthStateChanged() {
         updateUserHeader();
         leaderboardTab.loadLeaderboard("all_time");
-        dashboardTab.refreshData();
+        timerTab.updateIntelligenceMetrics();
     }
 
     private void updateUserHeader() {
@@ -276,32 +267,28 @@ public class MainDashboardFrame extends JFrame {
 
         // Update titles (NO exposed URLs)
         switch (tabKey) {
-            case "DASHBOARD":
-                headerTitleLabel.setText("Focus Dashboard");
-                headerSubtitleLabel.setText("Your daily study momentum, inspiring quotes, and task checklist.");
-                dashboardTab.refreshData();
-                break;
             case "TIMER":
-                headerTitleLabel.setText("Study Timer & Pomodoro");
-                headerSubtitleLabel.setText("Focus deeply with interval timers and live cloud session synchronization.");
+                headerTitleLabel.setText("Study Focus Timer");
+                headerSubtitleLabel.setText("Focus deeply with flow aura, acoustic atmospheres, and live session syncing.");
+                timerTab.updateIntelligenceMetrics();
                 break;
             case "LEADERBOARD":
                 headerTitleLabel.setText("Global Scholar Leaderboard");
                 headerSubtitleLabel.setText("Real-time scholar rankings powered by EduTrace Cloud.");
                 leaderboardTab.loadLeaderboard("all_time");
                 break;
-            case "CALCULATOR":
-                headerTitleLabel.setText("Scientific Calculator");
-                headerSubtitleLabel.setText("High-performance math evaluator with trigonometry, logs, and powers.");
-                break;
             case "ANALYTICS":
                 headerTitleLabel.setText("Analytics & Study Reports");
                 headerSubtitleLabel.setText("Track completed study sessions, time per subject, and export history.");
                 analyticsTab.refreshData();
                 break;
+            case "CALCULATOR":
+                headerTitleLabel.setText("Scientific Calculator");
+                headerSubtitleLabel.setText("High-performance math evaluator with trigonometry, logs, and powers.");
+                break;
             case "SETTINGS":
                 headerTitleLabel.setText("Settings & Data Management");
-                headerSubtitleLabel.setText("Manage cloud synchronization, local storage, pomodoro, and quotes.");
+                headerSubtitleLabel.setText("Manage cloud synchronization, local storage, pomodoro, and preferences.");
                 break;
         }
     }

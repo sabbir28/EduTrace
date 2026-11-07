@@ -110,6 +110,38 @@ public class DataManager {
         }
     }
 
+    public synchronized long getTodayTotalStudySeconds() {
+        long midnight = getTodayMidnightMillis();
+        long total = 0;
+        for (DesktopStudySession s : data.sessions) {
+            if (s.getStartTime() >= midnight) {
+                total += s.getDurationSeconds();
+            }
+        }
+        return total;
+    }
+
+    public synchronized long getTodaySubjectStudySeconds(String subjectName) {
+        if (subjectName == null) return 0;
+        long midnight = getTodayMidnightMillis();
+        long total = 0;
+        for (DesktopStudySession s : data.sessions) {
+            if (s.getStartTime() >= midnight && subjectName.equalsIgnoreCase(s.getSubjectName())) {
+                total += s.getDurationSeconds();
+            }
+        }
+        return total;
+    }
+
+    private long getTodayMidnightMillis() {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
+    }
+
     public synchronized void clearAllData() {
         data.tasks.clear();
         data.sessions.clear();

@@ -137,6 +137,36 @@ public class DesktopCloudSessionManager {
         }
     }
 
+    public synchronized void pauseLiveServerSession(String notes) {
+        final int sessId = activeServerSessionId;
+        if (sessId == -1 || !DesktopCloudAuthManager.getInstance().isLoggedIn()) return;
+        final String token = DesktopCloudAuthManager.getInstance().getAccessToken();
+        if (token.isEmpty()) return;
+
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (notes != null && !notes.isEmpty()) {
+                    payload.put("notes", notes);
+                }
+                DesktopCloudApiClient.sendApiRequest("/sessions/" + sessId + "/pause", "POST", payload, token);
+            } catch (Exception ignored) {}
+        });
+    }
+
+    public synchronized void resumeLiveServerSession() {
+        final int sessId = activeServerSessionId;
+        if (sessId == -1 || !DesktopCloudAuthManager.getInstance().isLoggedIn()) return;
+        final String token = DesktopCloudAuthManager.getInstance().getAccessToken();
+        if (token.isEmpty()) return;
+
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                DesktopCloudApiClient.sendApiRequest("/sessions/" + sessId + "/resume", "POST", new JSONObject(), token);
+            } catch (Exception ignored) {}
+        });
+    }
+
     public synchronized void stopLiveServerSession(long durationSeconds, String notes) {
         stopHeartbeatLoop();
         final int sessId = activeServerSessionId;

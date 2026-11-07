@@ -15,9 +15,11 @@ public class AmbientSoundPlayer {
 
     public enum SoundType {
         OFF("Audio Off"),
-        PINK_NOISE("Soft Pink Noise"),
-        RAIN("Calming Rain"),
+        PINK_NOISE("Soft Pink Noise Sanctuary"),
+        RAIN("Calming Rain & Storm"),
+        BINAURAL_ALPHA("Deep Binaural Alpha (432 Hz)"),
         BINAURAL_FOCUS("40Hz Gamma Focus"),
+        WHITE_NOISE("Pure White Noise"),
         METRONOME("Gentle Clock Tick");
 
         private final String label;
@@ -132,6 +134,18 @@ public class AmbientSoundPlayer {
                             // Occasional drop impulse
                             double drop = (random.nextDouble() > 0.9992) ? (random.nextDouble() * 2.0 - 1.0) * 8000 : 0;
                             sample = (short) ((base * 3000.0 * mod + drop) * volume);
+                            break;
+                        }
+                        case BINAURAL_ALPHA: {
+                            // 432 Hz carrier frequency modulated with 10 Hz Alpha wave (relaxed deep focus)
+                            double time = sampleIndex / sampleRate;
+                            double carrier = Math.sin(2.0 * Math.PI * 432.0 * time);
+                            double alphaMod = 0.5 + 0.5 * Math.sin(2.0 * Math.PI * 10.0 * time);
+                            sample = (short) (carrier * alphaMod * 5000.0 * volume);
+                            break;
+                        }
+                        case WHITE_NOISE: {
+                            sample = (short) ((random.nextDouble() * 2.0 - 1.0) * 3000.0 * volume);
                             break;
                         }
                         case BINAURAL_FOCUS: {

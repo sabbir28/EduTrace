@@ -203,11 +203,12 @@ public class SettingsTab extends JPanel {
         title.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
         JLabel info = new JLabel("<html><body style='line-height: 1.6; color: #E2E8F0; font-family: SansSerif;'>"
-                + "<b style='font-size: 14px; color: #FFB800;'>EduTrace Focus & Productivity Suite (Desktop Edition)</b><br>"
+                + "<b style='font-size: 14px; color: #FFB800;'>EduTrace Study Focus Timer (Desktop Edition)</b><br>"
                 + "Version 1.0.0 &bull; Pure Java Desktop Suite<br>"
                 + "Developed by <b>sabbir28</b> &bull; Built with FlatLaf Dark UI & Java SE 11+<br><br>"
-                + "Features: Minimalist Daily Dashboard, Pomodoro & Study Stopwatch, Live Global Leaderboard, "
-                + "Procedural Ambient Audio Engine, Full Scientific Math Evaluator, Focus Checklist, and Visual Analytics Breakdown."
+                + "Features: Dedicated Study Timer with Flow Aura glow effect, Pomodoro & Stopwatch intervals, "
+                + "Live Cloud Synchronization & Leaderboard, Procedural Ambient Audio with Acoustic Waveform Visualizer, "
+                + "Scientific Math Calculator, and Visual Analytics Breakdown."
                 + "</body></html>");
         info.setFont(new Font("SansSerif", Font.PLAIN, 13));
 

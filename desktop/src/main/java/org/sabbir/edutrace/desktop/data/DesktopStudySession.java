@@ -29,6 +29,7 @@ public class DesktopStudySession {
 
     public long getStartTimestamp() { return startTimestamp; }
     public void setStartTimestamp(long startTimestamp) { this.startTimestamp = startTimestamp; }
+    public long getStartTime() { return startTimestamp; }
 
     public long getEndTimestamp() { return endTimestamp; }
     public void setEndTimestamp(long endTimestamp) { this.endTimestamp = endTimestamp; }
