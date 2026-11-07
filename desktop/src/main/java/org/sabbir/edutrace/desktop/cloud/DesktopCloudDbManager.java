@@ -142,3 +142,4 @@ public class DesktopCloudDbManager {
         DesktopCloudNotificationManager.getInstance().checkTimerMatch(callback);
     }
 }
+

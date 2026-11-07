@@ -34,3 +34,4 @@ public class DesktopTimerMatchStatus {
         return new DesktopTimerMatchStatus(matched, todaySec, targetSec, msg, pct, scholars);
     }
 }
+
