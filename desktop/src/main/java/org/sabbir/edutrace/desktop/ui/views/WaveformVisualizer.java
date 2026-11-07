@@ -116,3 +116,4 @@ public class WaveformVisualizer extends JComponent {
         g2.dispose();
     }
 }
+
