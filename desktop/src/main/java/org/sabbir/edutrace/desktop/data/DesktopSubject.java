@@ -32,3 +32,4 @@ public class DesktopSubject {
         return name;
     }
 }
+

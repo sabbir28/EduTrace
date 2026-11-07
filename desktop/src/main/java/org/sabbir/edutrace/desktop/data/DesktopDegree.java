@@ -27,3 +27,4 @@ public class DesktopDegree {
         return name;
     }
 }
+

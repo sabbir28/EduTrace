@@ -476,3 +476,4 @@ public class DegreesSubjectsTab extends JPanel {
         }
     }
 }
+
