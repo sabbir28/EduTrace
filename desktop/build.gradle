@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'org.sabbir.edutrace'
+version = project.findProperty('versionName') ?: '1.0.0'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+application {
+    mainClass = 'org.sabbir.edutrace.desktop.EduTraceDesktop'
+}
+
+dependencies {
+    implementation 'com.formdev:flatlaf:3.4.1'
+    implementation 'com.formdev:flatlaf-extras:3.4.1'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'org.sabbir.edutrace.desktop.EduTraceDesktop',
+            'Implementation-Title': 'EduTrace Desktop',
+            'Implementation-Version': project.version
+        )
+    }
+}
+
+task fatJar(type: Jar) {
+    archiveBaseName = 'EduTrace-Desktop'
+    archiveClassifier = 'all'
+    manifest {
+        attributes(
+            'Main-Class': 'org.sabbir.edutrace.desktop.EduTraceDesktop',
+            'Implementation-Title': 'EduTrace Desktop',
+            'Implementation-Version': project.version
+        )
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    with jar
+}

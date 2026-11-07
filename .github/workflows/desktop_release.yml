@@ -1,0 +1,92 @@
+name: EduTrace Desktop CI & Release
+
+on:
+  push:
+    branches: [ "desktop" ]
+    tags: [ "v*desktop*", "desktop-*" ]
+  pull_request:
+    branches: [ "desktop" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Determine Desktop Release Version
+        id: version
+        run: |
+          BUILD_NUMBER="${{ github.run_number }}"
+          FULL_VERSION="1.0.${BUILD_NUMBER}"
+          TAG_NAME="desktop-v${FULL_VERSION}"
+          echo "version=${FULL_VERSION}" >> $GITHUB_OUTPUT
+          echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
+          echo "Building EduTrace Desktop Version: ${FULL_VERSION} (Tag: ${TAG_NAME})"
+
+      - name: Build & Package Desktop Application
+        run: |
+          ./gradlew :desktop:test :desktop:fatJar :desktop:distZip -PversionName=${{ steps.version.outputs.version }}
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir -p release_artifacts
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag_name }}"
+
+          # Standalone Runnable Executable JAR
+          cp desktop/build/libs/EduTrace-Desktop-all.jar "release_artifacts/EduTrace-Desktop-${VERSION}.jar"
+
+          # Windows Distribution Bundle (Runnable JAR + .bat launcher)
+          mkdir -p win_dist
+          cp desktop/build/libs/EduTrace-Desktop-all.jar win_dist/EduTrace-Desktop-all.jar
+          cp desktop/EduTrace.bat win_dist/EduTrace.bat
+          (cd win_dist && zip -r "../release_artifacts/EduTrace-Desktop-Windows-${VERSION}.zip" .)
+
+          # Linux / macOS Distribution Bundle (Runnable JAR + .sh launcher)
+          mkdir -p linux_dist
+          cp desktop/build/libs/EduTrace-Desktop-all.jar linux_dist/EduTrace-Desktop-all.jar
+          cp desktop/EduTrace.sh linux_dist/EduTrace.sh
+          chmod +x linux_dist/EduTrace.sh
+          (cd linux_dist && tar -czvf "../release_artifacts/EduTrace-Desktop-Linux-${VERSION}.tar.gz" .)
+
+          # Generate SHA-256 Checksums
+          cd release_artifacts
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload Build Artifacts to Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: edutrace-desktop-build-${{ steps.version.outputs.version }}
+          path: release_artifacts/*
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: "EduTrace Desktop Release ${{ steps.version.outputs.tag_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release_artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
