@@ -5,6 +5,10 @@ import org.sabbir.edutrace.desktop.data.DataManager;
 
 import javax.swing.*;
 
+/**
+ * Manages user accounts, authentication tokens, profile sync, and password recovery
+ * via the EduTrace REST API. Direct port of Android CloudAuthManager.java.
+ */
 public class DesktopCloudAuthManager {
 
     private static DesktopCloudAuthManager instance;
@@ -23,6 +27,16 @@ public class DesktopCloudAuthManager {
 
     public interface ActionCallback {
         void onSuccess(String message);
+        void onError(String message);
+    }
+
+    public interface AvailabilityCallback {
+        void onAvailable();
+        void onError(String message);
+    }
+
+    public interface EmailLookupCallback {
+        void onFound(String username, String email);
         void onError(String message);
     }
 
@@ -45,7 +59,6 @@ public class DesktopCloudAuthManager {
     }
 
     private synchronized void loadSession() {
-        // Load from data manager or preferences if saved
         DataManager dm = DataManager.getInstance();
         if (dm.getData().currentUser != null && dm.getData().currentUser.getToken() != null) {
             this.currentUser = dm.getData().currentUser;
@@ -149,6 +162,107 @@ public class DesktopCloudAuthManager {
         });
     }
 
+    public void checkUserAvailability(String username, String email, AvailabilityCallback callback) {
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                if (username != null && !username.trim().isEmpty()) payload.put("username", username.trim());
+                if (email != null && !email.trim().isEmpty()) payload.put("email", email.trim());
+
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/auth/check-availability", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    boolean available = res.json.optBoolean("available", true);
+                    if (available) {
+                        if (callback != null) SwingUtilities.invokeLater(callback::onAvailable);
+                    } else {
+                        String msg = res.json.optString("message", "User identifier already in use.");
+                        if (callback != null) SwingUtilities.invokeLater(() -> callback.onError(msg));
+                    }
+                } else {
+                    String msg = res.errorMessage != null ? res.errorMessage : "Validation error";
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onError(msg));
+                }
+            } catch (Exception e) {
+                if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("Network error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public void findUserEmail(String usernameOrEmail, EmailLookupCallback callback) {
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username_or_email", usernameOrEmail.trim());
+
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/auth/find-email", "POST", payload, null);
+                if (res.isSuccess() && res.json != null) {
+                    String user = res.json.optString("username", usernameOrEmail);
+                    String email = res.json.optString("email", "");
+                    if (email.isEmpty()) {
+                        if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("No email found for this user."));
+                    } else {
+                        if (callback != null) SwingUtilities.invokeLater(() -> callback.onFound(user, email));
+                    }
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "User account not found.";
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("Lookup error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public void resetPassword(String usernameOrEmail, String newPassword, ActionCallback callback) {
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("username_or_email", usernameOrEmail.trim());
+                payload.put("new_password", newPassword);
+
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/auth/reset-password", "POST", payload, null);
+                if (res.isSuccess()) {
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onSuccess("Password has been reset successfully!"));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Password reset failed.";
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("Error: " + e.getMessage()));
+            }
+        });
+    }
+
+    public void changePassword(String currentPassword, String newPassword, ActionCallback callback) {
+        if (!isLoggedIn()) {
+            if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("Please sign in to change password."));
+            return;
+        }
+        String token = getAccessToken();
+        DesktopCloudApiClient.cloudExecutor.execute(() -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("current_password", currentPassword);
+                payload.put("new_password", newPassword);
+
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/auth/change-password", "PUT", payload, token);
+                if (res.isSuccess()) {
+                    String msg = "Password updated successfully! 🔒";
+                    if (res.json != null && res.json.has("message")) {
+                        msg = res.json.getString("message");
+                    }
+                    final String successMsg = msg;
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onSuccess(successMsg));
+                } else {
+                    String err = res.errorMessage != null ? res.errorMessage : "Failed to update password.";
+                    if (callback != null) SwingUtilities.invokeLater(() -> callback.onError(err));
+                }
+            } catch (Exception e) {
+                if (callback != null) SwingUtilities.invokeLater(() -> callback.onError("Error: " + e.getMessage()));
+            }
+        });
+    }
+
     public void syncUserProfile(ActionCallback callback) {
         if (!isLoggedIn()) return;
         String token = getAccessToken();
@@ -173,4 +287,3 @@ public class DesktopCloudAuthManager {
         });
     }
 }
-

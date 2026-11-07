@@ -210,9 +210,22 @@ public class AuthDialog extends JDialog {
         card.add(createFieldLabel("PASSWORD"));
         card.add(Box.createVerticalStrut(4));
         card.add(pfPass);
-        card.add(Box.createVerticalStrut(8));
+
+        JButton btnForgot = new JButton("Forgot Password? 🔒");
+        btnForgot.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        btnForgot.setForeground(EduTraceDesktop.COLOR_TEXT_SECONDARY);
+        btnForgot.setContentAreaFilled(false);
+        btnForgot.setBorder(null);
+        btnForgot.setFocusPainted(false);
+        btnForgot.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnForgot.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnForgot.addActionListener(e -> showResetPasswordDialog());
+
+        card.add(Box.createVerticalStrut(6));
+        card.add(btnForgot);
+        card.add(Box.createVerticalStrut(4));
         card.add(lblErr);
-        card.add(Box.createVerticalStrut(10));
+        card.add(Box.createVerticalStrut(8));
         card.add(btnSubmit);
         return card;
     }
@@ -352,6 +365,39 @@ public class AuthDialog extends JDialog {
         lbl.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
         lbl.setAlignmentX(Component.LEFT_ALIGNMENT);
         return lbl;
+    }
+
+    private void showResetPasswordDialog() {
+        JTextField tfUser = new JTextField();
+        JPasswordField pfNewPass = new JPasswordField();
+
+        JPanel panel = new JPanel(new GridLayout(2, 2, 8, 8));
+        panel.add(new JLabel("Username or Email:"));
+        panel.add(tfUser);
+        panel.add(new JLabel("New Password:"));
+        panel.add(pfNewPass);
+
+        int result = JOptionPane.showConfirmDialog(this, panel, "Reset Password", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (result == JOptionPane.OK_OPTION) {
+            String u = tfUser.getText().trim();
+            String p = new String(pfNewPass.getPassword()).trim();
+            if (u.isEmpty() || p.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please enter both username and new password.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            authManager.resetPassword(u, p, new DesktopCloudAuthManager.ActionCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    JOptionPane.showMessageDialog(AuthDialog.this, message, "Password Reset", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+                @Override
+                public void onError(String message) {
+                    JOptionPane.showMessageDialog(AuthDialog.this, message, "Notice", JOptionPane.WARNING_MESSAGE);
+                }
+            });
+        }
     }
 
     private JTextField createStyledTextField(String placeholder) {

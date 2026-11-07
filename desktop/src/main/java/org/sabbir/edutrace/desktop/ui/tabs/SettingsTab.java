@@ -70,6 +70,10 @@ public class SettingsTab extends JPanel {
         btnRow.setOpaque(false);
 
         JButton btnTest = new JButton("Check Cloud Status 🌐");
+        JButton btnSyncCurriculum = new JButton("Sync Curriculum 🔄");
+        JButton btnBackup = new JButton("Cloud Backup ☁");
+        JButton btnRestore = new JButton("Restore from Cloud 📥");
+
         JLabel statusLbl = new JLabel("");
         statusLbl.setFont(new Font("SansSerif", Font.BOLD, 12));
 
@@ -80,12 +84,16 @@ public class SettingsTab extends JPanel {
 
             DesktopCloudApiClient.cloudExecutor.execute(() -> {
                 long start = System.currentTimeMillis();
-                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/rankings?timeframe=daily", "GET", null, null);
+                DesktopCloudApiClient.ApiResponse res = DesktopCloudApiClient.sendApiRequest("/health", "GET", null, null);
+                if (!res.isSuccess()) {
+                    res = DesktopCloudApiClient.sendApiRequest("/rankings?timeframe=daily", "GET", null, null);
+                }
                 long elapsed = System.currentTimeMillis() - start;
 
+                DesktopCloudApiClient.ApiResponse finalRes = res;
                 SwingUtilities.invokeLater(() -> {
                     btnTest.setEnabled(true);
-                    if (res.isSuccess()) {
+                    if (finalRes.isSuccess()) {
                         statusLbl.setText("✔ Cloud Operational (" + elapsed + " ms)");
                         statusLbl.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
                     } else {
@@ -96,7 +104,98 @@ public class SettingsTab extends JPanel {
             });
         });
 
+        btnSyncCurriculum.addActionListener(e -> {
+            btnSyncCurriculum.setEnabled(false);
+            statusLbl.setText("Syncing curriculum structure...");
+            statusLbl.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.syncCurriculum(new org.sabbir.edutrace.desktop.cloud.DesktopCloudSyncManager.SyncCallback() {
+                @Override
+                public void onProgress(String message) {
+                    statusLbl.setText(message);
+                }
+
+                @Override
+                public void onSuccess(String message) {
+                    btnSyncCurriculum.setEnabled(true);
+                    statusLbl.setText("✔ " + message);
+                    statusLbl.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
+                    if (onDataClearedCallback != null) onDataClearedCallback.run();
+                }
+
+                @Override
+                public void onError(String message) {
+                    btnSyncCurriculum.setEnabled(true);
+                    statusLbl.setText("✖ " + message);
+                    statusLbl.setForeground(new Color(0xEF, 0x44, 0x44));
+                }
+            });
+        });
+
+        btnBackup.addActionListener(e -> {
+            btnBackup.setEnabled(false);
+            statusLbl.setText("Uploading backup to EduTrace Cloud...");
+            statusLbl.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.backupData(new org.sabbir.edutrace.desktop.cloud.DesktopCloudSyncManager.SyncCallback() {
+                @Override
+                public void onProgress(String message) {
+                    statusLbl.setText(message);
+                }
+
+                @Override
+                public void onSuccess(String message) {
+                    btnBackup.setEnabled(true);
+                    statusLbl.setText("✔ " + message);
+                    statusLbl.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
+                }
+
+                @Override
+                public void onError(String message) {
+                    btnBackup.setEnabled(true);
+                    statusLbl.setText("✖ " + message);
+                    statusLbl.setForeground(new Color(0xEF, 0x44, 0x44));
+                }
+            });
+        });
+
+        btnRestore.addActionListener(e -> {
+            int confirm = JOptionPane.showConfirmDialog(this,
+                    "Pull all degrees, subjects, and study sessions from EduTrace Cloud into local storage?",
+                    "Confirm Cloud Restore", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+
+            btnRestore.setEnabled(false);
+            statusLbl.setText("Restoring curriculum & sessions from cloud...");
+            statusLbl.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.restoreData(new org.sabbir.edutrace.desktop.cloud.DesktopCloudSyncManager.SyncCallback() {
+                @Override
+                public void onProgress(String message) {
+                    statusLbl.setText(message);
+                }
+
+                @Override
+                public void onSuccess(String message) {
+                    btnRestore.setEnabled(true);
+                    statusLbl.setText("✔ " + message);
+                    statusLbl.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
+                    if (onDataClearedCallback != null) onDataClearedCallback.run();
+                }
+
+                @Override
+                public void onError(String message) {
+                    btnRestore.setEnabled(true);
+                    statusLbl.setText("✖ " + message);
+                    statusLbl.setForeground(new Color(0xEF, 0x44, 0x44));
+                }
+            });
+        });
+
         btnRow.add(btnTest);
+        btnRow.add(btnSyncCurriculum);
+        btnRow.add(btnBackup);
+        btnRow.add(btnRestore);
         btnRow.add(statusLbl);
 
         card.add(title, BorderLayout.NORTH);

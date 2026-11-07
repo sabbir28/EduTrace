@@ -71,6 +71,37 @@ public class DegreesSubjectsTab extends JPanel {
         title.setFont(new Font("SansSerif", Font.BOLD, 12));
         title.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
 
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        btnRow.setOpaque(false);
+
+        JButton btnSync = new JButton("🔄 Sync");
+        btnSync.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnSync.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
+        btnSync.setForeground(EduTraceDesktop.COLOR_STATUS_BREAK);
+        btnSync.setFocusPainted(false);
+        btnSync.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnSync.addActionListener(e -> {
+            btnSync.setEnabled(false);
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.syncCurriculum(new org.sabbir.edutrace.desktop.cloud.DesktopCloudSyncManager.SyncCallback() {
+                @Override
+                public void onProgress(String message) {}
+
+                @Override
+                public void onSuccess(String message) {
+                    btnSync.setEnabled(true);
+                    refreshDegreeList();
+                    refreshSubjectGrid();
+                    JOptionPane.showMessageDialog(DegreesSubjectsTab.this, message, "Curriculum Synced", JOptionPane.INFORMATION_MESSAGE);
+                }
+
+                @Override
+                public void onError(String message) {
+                    btnSync.setEnabled(true);
+                    JOptionPane.showMessageDialog(DegreesSubjectsTab.this, message, "Sync Notice", JOptionPane.WARNING_MESSAGE);
+                }
+            });
+        });
+
         JButton btnAddDegree = new JButton("+ Add Degree");
         btnAddDegree.setFont(new Font("SansSerif", Font.BOLD, 11));
         btnAddDegree.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
@@ -79,8 +110,11 @@ public class DegreesSubjectsTab extends JPanel {
         btnAddDegree.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btnAddDegree.addActionListener(e -> showAddDegreeDialog());
 
+        btnRow.add(btnSync);
+        btnRow.add(btnAddDegree);
+
         header.add(title, BorderLayout.WEST);
-        header.add(btnAddDegree, BorderLayout.EAST);
+        header.add(btnRow, BorderLayout.EAST);
 
         // Degrees list scroll area
         degreeListContainer = new JPanel();

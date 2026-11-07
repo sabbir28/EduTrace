@@ -3,6 +3,7 @@ package org.sabbir.edutrace.desktop.ui.tabs;
 import org.sabbir.edutrace.desktop.EduTraceDesktop;
 import org.sabbir.edutrace.desktop.audio.AmbientSoundPlayer;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudAuthManager;
+import org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager;
 import org.sabbir.edutrace.desktop.cloud.DesktopCloudSessionManager;
 import org.sabbir.edutrace.desktop.data.DataManager;
 import org.sabbir.edutrace.desktop.data.DesktopQuoteManager;
@@ -680,6 +681,7 @@ public class StudyTimerTab extends JPanel {
                 sessionStartMillis = System.currentTimeMillis();
                 String subject = (String) cbSubjectSelector.getSelectedItem();
                 DesktopCloudSessionManager.getInstance().startLiveServerSession(subject != null ? subject : "General");
+                DesktopCloudDbManager.recordActivity("study_focus_start");
             }
             swingTimer.start();
             btnStartPause.setText("⏸ Pause");
@@ -688,6 +690,12 @@ public class StudyTimerTab extends JPanel {
             tvStatus.setText("● FOCUSING");
             tvStatus.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
             timerWrapperCard.repaint();
+
+            DesktopCloudDbManager.checkTimerMatch(status -> {
+                if (status != null && status.matched && isRunning && !isPaused) {
+                    tvStatus.setText("● FOCUSING • " + status.message);
+                }
+            });
         } else {
             // Pause
             isRunning = false;

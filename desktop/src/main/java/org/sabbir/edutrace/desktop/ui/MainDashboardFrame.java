@@ -228,7 +228,31 @@ public class MainDashboardFrame extends JFrame {
         userProfileBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         userProfileBtn.addActionListener(e -> openAuthDialog());
 
+        // Notification Bell Button
+        JButton notificationBtn = new JButton("🔔");
+        notificationBtn.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 12));
+        notificationBtn.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
+        notificationBtn.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+        notificationBtn.setFocusPainted(false);
+        notificationBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        notificationBtn.addActionListener(e -> showNotificationsDialog(notificationBtn));
+
+        // Periodic unread check
+        javax.swing.Timer notifTimer = new javax.swing.Timer(60000, e -> {
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.getUnreadNotificationCount(count -> {
+                if (count > 0) {
+                    notificationBtn.setText("🔔 " + count);
+                    notificationBtn.setForeground(new Color(0xEF, 0x44, 0x44));
+                } else {
+                    notificationBtn.setText("🔔");
+                    notificationBtn.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+                }
+            });
+        });
+        notifTimer.start();
+
         rightSide.add(liveClockLabel);
+        rightSide.add(notificationBtn);
         rightSide.add(userProfileBtn);
 
         header.add(titles, BorderLayout.WEST);
@@ -238,6 +262,90 @@ public class MainDashboardFrame extends JFrame {
 
     private void openAuthDialog() {
         AuthDialog dialog = new AuthDialog(this, this::onAuthStateChanged);
+        dialog.setVisible(true);
+    }
+
+    private void showNotificationsDialog(JButton notificationBtn) {
+        JDialog dialog = new JDialog(this, "Notification Center", true);
+        dialog.setSize(480, 520);
+        dialog.setLocationRelativeTo(this);
+
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBackground(EduTraceDesktop.COLOR_OBSIDIAN_BG);
+        root.setBorder(new EmptyBorder(16, 18, 16, 18));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+
+        JLabel title = new JLabel("IN-APP NOTIFICATIONS & ALERTS");
+        title.setFont(new Font("SansSerif", Font.BOLD, 12));
+        title.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+
+        JButton btnMarkAll = new JButton("Mark All Read");
+        btnMarkAll.setFont(new Font("SansSerif", Font.BOLD, 11));
+        btnMarkAll.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
+        btnMarkAll.setForeground(EduTraceDesktop.COLOR_TEXT_SECONDARY);
+        btnMarkAll.setFocusPainted(false);
+
+        header.add(title, BorderLayout.WEST);
+        header.add(btnMarkAll, BorderLayout.EAST);
+
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setOpaque(false);
+
+        JScrollPane scroll = new JScrollPane(listPanel);
+        scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+
+        JLabel loading = new JLabel("Loading notifications from EduTrace Server...");
+        loading.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
+        listPanel.add(loading);
+
+        org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.fetchNotifications(false, (notifications, unreadCount) -> {
+            listPanel.removeAll();
+            if (notifications == null || notifications.isEmpty()) {
+                JLabel empty = new JLabel("No new notifications at this time.");
+                empty.setForeground(EduTraceDesktop.COLOR_TEXT_MUTED);
+                listPanel.add(empty);
+            } else {
+                for (org.sabbir.edutrace.desktop.cloud.DesktopCloudNotification n : notifications) {
+                    JPanel item = new JPanel(new BorderLayout(8, 4));
+                    item.setBackground(EduTraceDesktop.COLOR_CARD_SURFACE);
+                    item.setBorder(BorderFactory.createCompoundBorder(
+                            BorderFactory.createLineBorder(EduTraceDesktop.COLOR_CARD_BORDER, 1),
+                            new EmptyBorder(10, 12, 10, 12)
+                    ));
+
+                    JLabel nTitle = new JLabel((n.isRead ? "○ " : "● ") + n.title);
+                    nTitle.setFont(new Font("SansSerif", Font.BOLD, 13));
+                    nTitle.setForeground(n.isRead ? EduTraceDesktop.COLOR_TEXT_SECONDARY : EduTraceDesktop.COLOR_ELITE_GOLD);
+
+                    JLabel nMsg = new JLabel("<html><body style='color:#94A3B8; font-size:11px;'>" + n.message + "</body></html>");
+
+                    item.add(nTitle, BorderLayout.NORTH);
+                    item.add(nMsg, BorderLayout.CENTER);
+
+                    listPanel.add(item);
+                    listPanel.add(Box.createVerticalStrut(8));
+                }
+            }
+            listPanel.revalidate();
+            listPanel.repaint();
+        });
+
+        btnMarkAll.addActionListener(e -> {
+            org.sabbir.edutrace.desktop.cloud.DesktopCloudDbManager.markAllNotificationsAsRead(msg -> {
+                notificationBtn.setText("🔔");
+                notificationBtn.setForeground(EduTraceDesktop.COLOR_ELITE_GOLD);
+                dialog.dispose();
+            });
+        });
+
+        root.add(header, BorderLayout.NORTH);
+        root.add(scroll, BorderLayout.CENTER);
+        dialog.setContentPane(root);
         dialog.setVisible(true);
     }
 
