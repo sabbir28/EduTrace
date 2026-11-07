@@ -23,6 +23,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
@@ -128,6 +129,19 @@ public class FocusLauncherActivity extends AppCompatActivity {
             switchMode(ScreenMode.DASHBOARD);
         } else if (currentMode == ScreenMode.MINIMALIST_HOME) {
             switchMode(ScreenMode.DASHBOARD);
+        }
+    }
+
+    private void hideKeyboard() {
+        View view = getCurrentFocus();
+        if (view == null && binding != null) {
+            view = binding.getRoot();
+        }
+        if (view != null) {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) {
+                imm.hideSoftInputFromWindow(view.getWindowToken(), 0);
+            }
         }
     }
 
@@ -974,6 +988,9 @@ public class FocusLauncherActivity extends AppCompatActivity {
 
     private void switchMode(ScreenMode newMode) {
         currentMode = newMode;
+        if (newMode != ScreenMode.APP_DRAWER) {
+            hideKeyboard();
+        }
 
         binding.viewDashboard.setVisibility(newMode == ScreenMode.DASHBOARD ? View.VISIBLE : View.GONE);
         binding.viewMinimalistHome.setVisibility(newMode == ScreenMode.MINIMALIST_HOME ? View.VISIBLE : View.GONE);
