@@ -352,3 +352,4 @@ public class StudyTimerTab extends JPanel {
         return card;
     }
 }
+

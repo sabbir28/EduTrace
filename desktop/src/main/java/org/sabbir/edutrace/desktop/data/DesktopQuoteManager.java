@@ -97,3 +97,4 @@ public class DesktopQuoteManager {
         return list.get(currentIndex);
     }
 }
+

@@ -35,6 +35,7 @@ jar {
 task fatJar(type: Jar) {
     archiveBaseName = 'EduTrace-Desktop'
     archiveClassifier = 'all'
+    archiveFileName = 'EduTrace-Desktop-all.jar'
     manifest {
         attributes(
             'Main-Class': 'org.sabbir.edutrace.desktop.EduTraceDesktop',
@@ -48,3 +49,4 @@ task fatJar(type: Jar) {
     }
     with jar
 }
+

@@ -46,3 +46,4 @@ public class DesktopAppTest {
         assertTrue(task.isCompleted());
     }
 }
+

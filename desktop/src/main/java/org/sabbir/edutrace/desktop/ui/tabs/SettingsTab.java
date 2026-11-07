@@ -178,3 +178,4 @@ public class SettingsTab extends JPanel {
         return card;
     }
 }
+

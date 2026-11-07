@@ -5,17 +5,21 @@ cd "$DIR"
 
 echo "Starting EduTrace Desktop Focus Suite..."
 
-if [ -f "EduTrace-Desktop-all.jar" ]; then
-    java -jar "EduTrace-Desktop-all.jar" "$@"
-elif [ -f "build/libs/EduTrace-Desktop-all.jar" ]; then
-    java -jar "build/libs/EduTrace-Desktop-all.jar" "$@"
-else
-    echo "EduTrace JAR not found. Building with Gradle..."
-    ../gradlew :desktop:fatJar
-    if [ -f "build/libs/EduTrace-Desktop-all.jar" ]; then
-        java -jar "build/libs/EduTrace-Desktop-all.jar" "$@"
-    else
-        echo "Failed to launch. Please run: ./gradlew :desktop:run"
-        exit 1
+for jar in EduTrace-Desktop*.jar build/libs/EduTrace-Desktop*.jar; do
+    if [ -f "$jar" ]; then
+        exec java -jar "$jar" "$@"
     fi
-fi
+done
+
+echo "EduTrace JAR not found. Building with Gradle..."
+../gradlew :desktop:fatJar
+
+for jar in build/libs/EduTrace-Desktop*.jar; do
+    if [ -f "$jar" ]; then
+        exec java -jar "$jar" "$@"
+    fi
+done
+
+echo "Failed to launch. Please run: ./gradlew :desktop:run"
+exit 1
+

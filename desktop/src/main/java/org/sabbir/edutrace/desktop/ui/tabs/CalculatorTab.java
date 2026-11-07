@@ -286,3 +286,4 @@ public class CalculatorTab extends JPanel {
         return card;
     }
 }
+

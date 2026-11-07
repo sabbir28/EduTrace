@@ -51,18 +51,27 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           TAG="${{ steps.version.outputs.tag_name }}"
 
+          # Locate built executable JAR
+          JAR_FILE=$(ls desktop/build/libs/EduTrace-Desktop*all.jar desktop/build/libs/EduTrace-Desktop*.jar 2>/dev/null | head -n 1)
+          if [ -z "$JAR_FILE" ] || [ ! -f "$JAR_FILE" ]; then
+            echo "::error::No executable JAR found in desktop/build/libs!"
+            ls -la desktop/build/libs/ || true
+            exit 1
+          fi
+          echo "Found desktop runnable JAR: $JAR_FILE"
+
           # Standalone Runnable Executable JAR
-          cp desktop/build/libs/EduTrace-Desktop-all.jar "release_artifacts/EduTrace-Desktop-${VERSION}.jar"
+          cp "$JAR_FILE" "release_artifacts/EduTrace-Desktop-${VERSION}.jar"
 
           # Windows Distribution Bundle (Runnable JAR + .bat launcher)
           mkdir -p win_dist
-          cp desktop/build/libs/EduTrace-Desktop-all.jar win_dist/EduTrace-Desktop-all.jar
+          cp "$JAR_FILE" win_dist/EduTrace-Desktop-all.jar
           cp desktop/EduTrace.bat win_dist/EduTrace.bat
           (cd win_dist && zip -r "../release_artifacts/EduTrace-Desktop-Windows-${VERSION}.zip" .)
 
           # Linux / macOS Distribution Bundle (Runnable JAR + .sh launcher)
           mkdir -p linux_dist
-          cp desktop/build/libs/EduTrace-Desktop-all.jar linux_dist/EduTrace-Desktop-all.jar
+          cp "$JAR_FILE" linux_dist/EduTrace-Desktop-all.jar
           cp desktop/EduTrace.sh linux_dist/EduTrace.sh
           chmod +x linux_dist/EduTrace.sh
           (cd linux_dist && tar -czvf "../release_artifacts/EduTrace-Desktop-Linux-${VERSION}.tar.gz" .)
@@ -90,3 +99,4 @@ jobs:
           files: release_artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

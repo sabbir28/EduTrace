@@ -365,3 +365,4 @@ public class DashboardTab extends JPanel {
         return card;
     }
 }
+

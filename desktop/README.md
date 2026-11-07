@@ -66,3 +66,4 @@ Double-click `desktop/EduTrace.bat` or run it from CMD/PowerShell.
 
 ## Releases & Automated CI/CD
 Every commit pushed to the `desktop` branch is automatically built, packaged into Windows ZIP, Linux TAR.GZ, and standalone JARs, and published to GitHub Releases via GitHub Actions (`.github/workflows/desktop_release.yml`).
+

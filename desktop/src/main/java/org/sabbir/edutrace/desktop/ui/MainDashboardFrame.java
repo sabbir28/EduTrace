@@ -255,3 +255,4 @@ public class MainDashboardFrame extends JFrame {
         liveClockLabel.setText(sdf.format(new Date()));
     }
 }
+

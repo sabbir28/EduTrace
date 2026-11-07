@@ -298,3 +298,4 @@ public class AnalyticsTab extends JPanel {
         return card;
     }
 }
+
